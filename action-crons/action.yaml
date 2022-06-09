@@ -1,0 +1,47 @@
+name: 'Start wanted cron'
+description: ''
+
+inputs:
+  event_schedule:
+    description: 'Action event cron'
+    required: true
+  matrix_cron:
+    description: 'When do you want to run this'
+    required: true
+  matrix_branch:
+    description: 'Branch on which you want to run'
+    required: true
+  matrix_workflow:
+    description: 'Workflow you want to run'
+    required: true
+  access_token:
+    description: 'Access token for private repository'
+    required: false
+
+
+
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v2
+      if: inputs.event_schedule == inputs.matrix_cron
+    - name: run cron
+      shell: bash
+      if: inputs.event_schedule == inputs.matrix_cron
+      run: |
+        set -ex
+        IFS=','
+        for i in ${WORKFLOWS}
+        do
+          eval "gh workflow run $i --ref=${{ inputs.matrix_branch }}"
+        done
+        echo "::notice:: Runned ${{ inputs.matrix_workflow }} on ${{ inputs.matrix_branch }}"
+      env:
+        WORKFLOWS: ${{ inputs.matrix_workflows }}
+        GITHUB_TOKEN: ${{ inputs.access_token }}
+    - name: 'Not run cron'
+      shell: bash
+      if: inputs.event_schedule != inputs.matrix_cron
+      run: |
+        echo "::notice:: Not runned ${{ inputs.matrix_workflow }} on ${{ inputs.matrix_branch }}"

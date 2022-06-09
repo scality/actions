@@ -1,0 +1,53 @@
+name: 'Start cron jobs'
+
+on:
+  schedule:
+    - cron: '20 1 * * 0-6'
+    # Run Development9.0
+    # baseline.yaml, end-to-end.yaml -f postmerge-vm=false, packaging-tests.yaml
+    - cron: '21 1 * * 0-6'
+    # Run Development8.5
+    # baseline.yaml, end-to-end.yaml -f postmerge-vm=false, packaging-tests.yaml
+    - cron: '22 1 * * 0-6'
+    # Run Development7.4
+    # baseline.yaml, end-to-end.yaml -f postmerge-vm=false, packaging-tests.yaml
+
+jobs:
+  crons:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        jobs:
+          - name: 'development 9.0'
+            cron: '20 1 * * 0-6'
+            branch: 'development/9.0'
+            workflows: 'baseline.yaml,end-to-end.yaml -f postmerge-vm=false,packaging-tests.yaml'
+          - name: 'development 8.5'
+            cron: '21 1 * * 0-6'
+            branch: 'development/8.5'
+            workflows: 'baseline.yaml,end-to-end.yaml -f postmerge-vm=false,packaging-tests.yaml'
+          - name: 'development 7.4'
+            cron: '22 1 * * 0-6'
+            branch: 'development/7.4'
+            workflows: 'baseline.yaml,end-to-end.yaml -f postmerge-vm=false,packaging-tests.yaml'
+    steps:
+      - uses: actions/checkout@v2
+        if: github.event.schedule == matrix.jobs.cron
+      - name: 'run crons'
+        if: github.event.schedule == matrix.jobs.cron
+        run: |
+          set -ex
+          IFS=','
+          for i in ${WORKFLOWS}
+          do
+            eval "gh workflow run $i --ref=${{  matrix.jobs.branch }}"
+          done
+          echo "::notice:: Runned ${{ matrix.jobs.workflow }} on ${{ matrix.jobs.branch }}"
+        env:
+          WORKFLOWS: ${{ matrix.jobs.workflows }}
+          GITHUB_TOKEN: ${{ secrets.GIT_ACCESS_TOKEN }}
+      - name: 'Not run cron'
+        if: github.event.schedule != matrix.jobs.cron
+        run: |
+          echo "::notice:: Not runned ${{ matrix.jobs.workflow }} on ${{ matrix.jobs.branch }}"
+

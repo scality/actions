@@ -1,0 +1,8 @@
+name: 'moke tests'
+on: workflow_dispatch
+
+jobs:
+  mock:
+    runs-on: ubuntu-latest
+    steps:
+      - run: /bin/true

@@ -1,0 +1,17 @@
+name: 'Start cron jobs'
+
+on:
+  push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        if: inputs.event_schedule == inputs.matrix_cron
+      - uses: ./action-crons
+        with:
+           event_schedule: 'now'
+           matrix_cron: 'now'
+           matrix_branch: main
+           matrix_workflow: mocke.yaml
