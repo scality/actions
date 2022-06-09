@@ -1,0 +1,16 @@
+name: 'Test upload Dockerfile'
+
+on:
+  push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: ./actions-docker-upload
+        with:
+          name: 'test'
+          docker_context: './.github/docker'
+          access_token: ${{ secrets.GITHUB_TOKEN }}
+      - run: docker pull "ghcr.io/${{ github.repository }}/test:${{ github.sha }}"
