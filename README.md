@@ -1,6 +1,6 @@
-# action-releng-utils
+# actions
 
-Set of actions used a cross the Scality organization.
+Set of GitHub Actions actions used a cross the Scality organization.
 
 ## action-crons
 Call different workflows running on defined hour with specific arguments.
