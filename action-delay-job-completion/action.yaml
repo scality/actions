@@ -1,0 +1,17 @@
+name: "Delay job completion"
+description: 'Sleep for a specified duration in order to delay completion of the job'
+
+inputs:
+  completion_delay_m:
+    description: Completion delay (minutes)
+    default: 30
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Debug: Delay job completion"
+      shell: bash
+      run: |
+        echo "Sleeping for ${{ inputs.completion_delay_m }} minutes.
+        Create a file named 'cancel_delay' under $GITHUB_WORKSPACE or under / to cancel."
+        timeout ${{ inputs.completion_delay_m }}m bash -c "while [ ! -f /cancel_delay -a ! -f $GITHUB_WORKSPACE/cancel_delay ]; do sleep 5; done" || true
