@@ -5,10 +5,16 @@ on:
 
 jobs:
   ssh:
-    runs-on:
-    - self-hosted
-    - centos7
-    - large
+    name: ssh ${{ matrix.name }}
+    strategy:
+      fail-fast: true
+      matrix:
+        name:
+        - ubuntu-latest
+        - centos7
+        - redhat8
+        - rocky8
+    runs-on: ${{ matrix.name }}
     steps:
     - name: Checkout
       uses: actions/checkout@v3
