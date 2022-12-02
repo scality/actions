@@ -1,0 +1,21 @@
+name: test-actions
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-infra-example:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: ./infra/example
+      id: custom-action
+      with:
+        in: my-input
+    - run: echo "Success!"
+      shell: bash
+      if: steps.custom-action.outputs.out == 'example-output'
+    - run: echo "Failure" && exit 1
+      shell: bash
+      if: steps.custom-action.outputs.out != 'example-output'

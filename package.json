@@ -3,7 +3,13 @@
   "version": "1.0.0",
   "description": "Collection of Scality re-usable GitHub Actions written with Typescript.",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "npm run build --workspaces",
+    "format": "npm run format --workspaces",
+    "format-check": "npm run format-check --workspaces",
+    "lint": "npm run lint --workspaces",
+    "package": "npm run package --workspaces",
+    "test": "npm run test --workspaces",
+    "all": "npm run all --workspaces"
   },
   "repository": {
     "type": "git",
@@ -20,5 +26,8 @@
   "bugs": {
     "url": "https://github.com/scality/actions/issues"
   },
-  "homepage": "https://github.com/scality/actions#readme"
+  "homepage": "https://github.com/scality/actions#readme",
+  "workspaces": [
+    "infra"
+  ]
 }
