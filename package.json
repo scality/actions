@@ -1,0 +1,24 @@
+{
+  "name": "@scality-actions/index",
+  "version": "1.0.0",
+  "description": "Collection of Scality re-usable GitHub Actions written with Typescript.",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scality/actions.git"
+  },
+  "keywords": [
+    "github-actions",
+    "actions",
+    "scality",
+    "typescript"
+  ],
+  "author": "Scality",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/scality/actions/issues"
+  },
+  "homepage": "https://github.com/scality/actions#readme"
+}
