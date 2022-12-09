@@ -8,7 +8,8 @@
     "format": "prettier --write '**/*.ts'",
     "format-check": "prettier --check '**/*.ts'",
     "lint": "eslint src/**/*.ts",
-    "package": "npm run package:example",
+    "package": "npm run package:example && npm run package:setup",
+    "package:setup": "ncc build src/entrypoints/setup.ts --source-map --license licenses.txt --out setup/dist",
     "package:example": "ncc build src/entrypoints/example.ts --source-map --license licenses.txt --out example/dist",
     "test": "jest --passWithNoTests",
     "all": "npm run build && npm run format && npm run lint && npm run package && npm test"
@@ -34,6 +35,11 @@
     "typescript": "^4.9.3"
   },
   "dependencies": {
-    "@actions/core": "^1.10.0"
+    "@actions/core": "^1.10.0",
+    "@actions/exec": "^1.1.1",
+    "@actions/io": "^1.1.2",
+    "@actions/tool-cache": "^2.0.1",
+    "@pulumi/pulumi": "^3.48.0",
+    "@pulumi/random": "^4.8.2"
   }
 }
