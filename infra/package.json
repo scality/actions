@@ -39,6 +39,7 @@
     "@actions/exec": "^1.1.1",
     "@actions/io": "^1.1.2",
     "@actions/tool-cache": "^2.0.1",
+    "@pulumi/openstack": "^3.9.0",
     "@pulumi/pulumi": "^3.48.0",
     "@pulumi/random": "^4.8.2"
   }

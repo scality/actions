@@ -27,3 +27,9 @@ separate Scality products (RING and ARTESCA) into distinct projects.
 However, Pulumi also exposes a concept of [components][pulumi-components] which can
 be shared in a reusable library. We will use to provide basic building blocks and
 standard implementations for known cloud providers.
+
+The project is thus structured as follows:
+
+```
+infra/pulumi
+

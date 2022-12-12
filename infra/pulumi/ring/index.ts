@@ -4,10 +4,9 @@
  * @packageDocumentation
  */
 
-import * as pulumi from "@pulumi/pulumi";
-
 export async function main() {
-  let config = new pulumi.Config();
-  let cloud = config.require("cloud");
-  console.log(`This stack will use the "${cloud}" provider.`);
+  throw new Error(
+    "Deploying cloud infrastructure for RING is not yet supported by this action." +
+      " Feel free to submit a pull request on github.com/scality/actions !"
+  );
 }
