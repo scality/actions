@@ -29,22 +29,22 @@ runs:
   using: "composite"
   steps:
     - name: Set up QEMU
-      uses: docker/setup-qemu-action@v1
+      uses: docker/setup-qemu-action@v2
     - name: Set up Docker Buildk
-      uses: docker/setup-buildx-action@v1
+      uses: docker/setup-buildx-action@v2
       with:
         buildkitd-flags: --debug
 
     - name: Login to Registry
       if: ${{ inputs.access_token }}
-      uses: docker/login-action@v1
+      uses: docker/login-action@v2
       with:
         registry: ${{ inputs.registry_url }}
         username: ${{ inputs.registry_username || github.repository_owner }}
         password: ${{ inputs.access_token }}
 
     - name: Cache Docker layers
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       with:
         path: /tmp/.buildx-cache
         key: ${{ runner.os }}-{{ inputs.name }}-${{ github.sha }}
@@ -52,7 +52,7 @@ runs:
           ${{ runner.os }}-{{ inputs.name }}-
 
     - name: Build and push ${{ inputs.name }}
-      uses: docker/build-push-action@v2
+      uses: docker/build-push-action@v3
       with:
         push: true
         context: ${{ inputs.docker_context }}
