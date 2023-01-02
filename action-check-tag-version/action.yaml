@@ -1,0 +1,57 @@
+name: Check tag and version
+description: 'Check the given tag agains the local repository version and main branch'
+
+inputs:
+  tag:
+    required: true
+    description: tag to check agains the local version
+  version:
+    required: true
+    description: local repository version
+  artifacts-to-promote:
+    required: true
+    description: artifacts name to promote
+
+runs:
+  using: "composite"
+  steps:
+    - name: Ensure git is installed
+      shell: bash
+      run: |
+        git --version
+    - name: Check development branch'
+      shell: bash
+      run: |
+        BRANCH_VERSION=$(git branch --show-current | cut -d'/' -f 2)
+        TAG_VERSION=$(echo ${{ inputs.tag }} | cut -d'.' -f 1-2)
+        if [[ "$BRANCH_VERSION" != "$TAG_VERSION" ]]; then
+          echo "Cannot release tag ${{ inputs.tag }} on branch $(git branch --show-current)" >&2
+          exit 1
+        fi
+    - name: Ensure tag does not already exists
+      shell: bash
+      run: |
+        if git show ${{ inputs.tag }} >/dev/null 2>&1; then
+          echo "tag already exists ! abort" >&2
+          exit 1
+        fi
+    - name: Ensure artifacts are the latests on development branch
+      shell: bash
+      run: |
+        HEAD_COMMIT=$(git log -1 --format='%H')
+        ARTIFACTS_COMMIT=$(echo ${{ inputs.artifacts-to-promote }} | cut -d':' -f 4 | cut -d'.' -f 1 | cut -d'-' -f 2)
+        if [[ "${HEAD_COMMIT:0:10}" != "$ARTIFACTS_COMMIT" ]]; then
+          echo "artifacts commit and current HEAD commit don't match" >&2
+          echo "artifacts commit: $ARTIFACTS_COMMIT" >&2
+          echo "HEAD commit: $HEAD_COMMIT" >&2
+          exit 1
+        fi
+    - name: Ensure tag matches local version
+      shell: bash
+      run: |
+        if [[ "${{ inputs.tag }}" != "${{ inputs.version }}" ]]; then
+          echo "tag does not match with current version" >&2
+          echo "tag: ${{ inputs.tag }}" >&2
+          echo "version file: $VERSION" >&2
+          exit 1
+        fi
