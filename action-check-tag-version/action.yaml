@@ -19,7 +19,7 @@ runs:
       shell: bash
       run: |
         git --version
-    - name: Check development branch'
+    - name: Check development branch
       shell: bash
       run: |
         BRANCH_VERSION=$(git branch --show-current | cut -d'/' -f 2)
