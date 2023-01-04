@@ -1,0 +1,60 @@
+name: Bump version
+description: Bump the current version in file VERSION and open a new PR with the changes
+
+inputs:
+  current-version:
+    required: true
+    description: the current version to bump
+  branch:
+    required: true
+    description: branch name for the new PR to open
+  level:
+    description: 'what type of version to bump (major, minor, ...), default=patch'
+    default: patch
+
+runs:
+  using: "composite"
+  steps:
+    - name: Ensure git is installed
+      shell: bash
+      run: |
+        git --version
+    - name: Ensure gh is installed
+      shell: bash
+      run: |
+        gh --version
+    - name: Ensure VERSION file exists
+      shell: bash
+      run: |
+        if [ ! -f ./VERSION ]; then
+          echo "This action bumps the ${{ input.level }} version in the file ./VERSION" 1>&2
+          echo "file ./VERSION not found" 1>&2
+          exit 1
+        fi
+    - name: Get next version
+      id: semver
+      uses: actions-ecosystem/action-bump-semver@v1
+      with:
+        current_version: ${{ inputs.current-version }}
+        level: ${{ inputs.level }}
+    - name: Bump component version
+      shell: bash
+      run: |
+        echo "VERSION=${{ steps.semver.outputs.new_version }}" > ./VERSION
+
+        git checkout -b ${{ inputs.branch }} ${{ github.ref_name }}
+
+        git config --local user.email ${{ github.actor }}@scality.com
+        git config --local user.name ${{ github.actor }}
+
+        git add ./VERSION
+
+        git commit -m "Bump version to ${{ steps.outputs.semver.new_version }}"
+        git push --set-upstream origin ${{ inputs.branch }}
+
+        new_pr=$(gh pr create -a @me -f)
+        echo "New PR opened: ${new_pr}"
+
+        # approve PR
+        pr_number=$(echo ${new_pr} | awk -F '/' '{print $NF}')
+        gh pr comment ${pr_number} --body "/approve"
