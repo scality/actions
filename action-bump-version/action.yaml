@@ -1,16 +1,22 @@
-name: Bump version
-description: Bump the current version in file VERSION and open a new PR with the changes
+name: Bump patch version
+description: |
+  Bump the current patch version in file VERSION
+  and open a new PR with the changes.
+  file VERSION is expected to the patch number
+  on a single line
+  ...
 
 inputs:
   current-version:
     required: true
     description: the current version to bump
+  patch-version-identifier:
+    default: VERSION_PATCH
+    description: |
+      the name of the variable that sets the patch version in the ./VERSION file
   branch:
     required: true
     description: branch name for the new PR to open
-  level:
-    description: 'what type of version to bump (major, minor, ...), default=patch'
-    default: patch
 
 runs:
   using: "composite"
@@ -40,7 +46,16 @@ runs:
     - name: Bump component version
       shell: bash
       run: |
-        echo "VERSION=${{ steps.semver.outputs.new_version }}" > ./VERSION
+        if ! grep ${{ inputs.patch-version-identifier }} ./VERSION ; then
+          echo "file ./VERSION does not contain ${{ inputs.patch-version-identifier }}"
+          exit 1
+        fi
+
+        ID=${{ inputs.patch-version-identifier }}
+        VERSION=${{ steps.semver.outputs.new_version }}
+
+        # update the version file
+        sed -i "s/^$ID=.\+$/$ID=$VERSION\" ./VERSION
 
         git checkout -b ${{ inputs.branch }} ${{ github.ref_name }}
 
