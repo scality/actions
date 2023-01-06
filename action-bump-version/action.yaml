@@ -71,5 +71,5 @@ runs:
         echo "New PR opened: ${new_pr}"
 
         # approve PR
-        pr_number=$(echo ${new_pr} | awk -F '/' '{print $NF}')
+        pr_number=${new_pr##*/}
         gh pr comment ${pr_number} --body "/approve"
