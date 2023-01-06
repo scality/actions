@@ -33,7 +33,7 @@ runs:
       shell: bash
       run: |
         if [ ! -f ./VERSION ]; then
-          echo "This action bumps the ${{ input.level }} version in the file ./VERSION" 1>&2
+          echo "This action bumps the patch version in the file ./VERSION" 1>&2
           echo "file ./VERSION not found" 1>&2
           exit 1
         fi
@@ -42,7 +42,7 @@ runs:
       uses: actions-ecosystem/action-bump-semver@v1
       with:
         current_version: ${{ inputs.current-version }}
-        level: ${{ inputs.level }}
+        level: patch
     - name: Bump component version
       shell: bash
       run: |
