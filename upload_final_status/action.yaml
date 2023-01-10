@@ -28,5 +28,3 @@ runs:
         user: ${{ secrets.ARTIFACTS_USER }}
         password: ${{ secrets.ARTIFACTS_PASSWORD }}
         source: ${{ steps.temp-dir.outputs.TEMP }}
-
-
