@@ -1,0 +1,30 @@
+name: artifacts-upload-final-status
+description: 'upload to artifacts server a file .final_status with the appropriate final status'
+
+runs:
+  using: composite
+  steps:
+    - name: create artifacts folder
+      id: temp-dir
+      shell: bash
+      run: |
+        TEMP=$(mktemp -d)
+        echo "TEMP=${TEMP}" >> ${GITHUB_OUPUT}
+    - name: write failed result
+      shell: bash
+      if: failure()
+      run: |
+        echo -n "FAILED" > ${{ steps.temp-dir.outputs.TEMP }}/.final_status
+    - name: write successful result
+      shell: bash
+      if: success()
+      run: |
+        echo -n "SUCCESSFUL" > ${{ steps.temp-dir.outputs.TEMP }}/.final_status
+    - name: upload file to artifacts
+      uses: scality/action-artifacts@v3
+      with:
+        method: upload
+        url: https://artifacts.scality.net
+        user: ${{ secrets.ARTIFACTS_USER }}
+        password: ${{ secrets.ARTIFACTS_PASSWORD }}
+        source: ${{ steps.temp-dir.outputs.TEMP }}
