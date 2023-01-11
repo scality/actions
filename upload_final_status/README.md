@@ -10,13 +10,19 @@ The action is intended to be used at the very end of any workflow.
 It si recomended to create a job that depends on all other jobs and
 which simply uses the action as it is.
 
-It does not require any inputs, the action will take care of uploading
-the appropriate status by using Github context conditions.
+The action requires the artifact `usrename` and `password` in order to upload the final status to the artifacts server.
+
+### Inputs
+
+| Name               | Description            | Required |
+|--------------------|------------------------|----------|
+| ARTIFACTS_USER     | The artifacts username | ✅        |
+| ARTIFACTS_PASSWORD | The artifacts password | ✅        |
 
 **Note:** it is important to set the `always()` condition on the step
 that calls this action so it's always called at the end.
 
-### Example
+## Example
 
 Here is a example of a workflow that uses the action.
 The workflow example works as follow:
@@ -48,5 +54,8 @@ jobs:
       - name: upload final status
         if: always()
         uses: scality/actions/upload_final_status@main
+        with:
+          ARTIFACTS_USER: ${{ secrets.ARTIFACTS_USER }}
+          ARTIFACTS_PASSWORD: ${{ secrets.ARTIFACTS_PASSWORD }}
 
 ```
