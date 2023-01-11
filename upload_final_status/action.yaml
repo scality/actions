@@ -14,12 +14,12 @@ runs:
       shell: bash
       if: failure()
       run: |
-        echo "FAILED" > ${{ steps.temp-dir.outputs.TEMP }}/.final_status
+        echo -n "FAILED" > ${{ steps.temp-dir.outputs.TEMP }}/.final_status
     - name: write successful result
       shell: bash
       if: success()
       run: |
-        echo "SUCCESSFUL" > ${{ steps.temp-dir.outputs.TEMP }}/.final_status
+        echo -n "SUCCESSFUL" > ${{ steps.temp-dir.outputs.TEMP }}/.final_status
     - name: upload file to artifacts
       uses: scality/action-artifacts@v3
       with:
