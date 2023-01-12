@@ -17,7 +17,8 @@ runs:
       shell: bash
       run: |
         TEMP=$(mktemp -d)
-        echo "TEMP=${TEMP}" >> ${GITHUB_OUPUT}
+        echo "Temp directory: ${TEMP}
+        echo "TEMP=$TEMP" >> $GITHUB_OUTPUT
     - name: write failed result
       shell: bash
       if: failure()
