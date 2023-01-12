@@ -14,3 +14,8 @@ jobs:
           docker_context: './.github/docker'
           access_token: ${{ secrets.GITHUB_TOKEN }}
       - run: docker pull "ghcr.io/${{ github.repository }}/test:${{ github.sha }}"
+      - uses: ./upload_final_status
+        if: always()
+        with:
+          ARTIFACTS_USER: ${{ secrets.ARTIFACTS_USER }}
+          ARTIFACTS_PASSWORD: ${{ secrets.ARTIFACTS_PASSWORD }}
