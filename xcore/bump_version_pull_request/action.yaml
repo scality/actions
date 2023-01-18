@@ -50,7 +50,7 @@ runs:
         git checkout -b feature/bump_version_${NEW_VERSION} ${{ github.ref }}
 
         # update version patch level
-        sed -i 's/VERSION=.*/VERSION=${NEW_VERSION}/' ./VERSION
+        sed -i "s/VERSION=.*/VERSION=${NEW_VERSION}/" ./VERSION
 
         git add ./VERSION
 
