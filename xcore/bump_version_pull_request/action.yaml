@@ -41,7 +41,7 @@ runs:
       id: bumped-version
       shell: bash
       run: |
-        new_version=$(semver ${{ steps.version.outputs.VERSION }}) -i patch)
+        new_version=$(./semver bump patch ${{ steps.version.outputs.VERSION }})
         echo "new_version=${new_version}" >> ${GITHUB_OUTPUT}
     - name: push changes
       shell: bash
@@ -50,7 +50,7 @@ runs:
         git checkout -b feature/bump_version_${NEW_VERSION} ${{ github.ref }}
 
         # update version patch level
-        sed -i 's/VERSION=.*/VERSION=${NEW_VERSION}/'
+        sed -i 's/VERSION=.*/VERSION=${NEW_VERSION}/' ./VERSION
 
         git add ./VERSION
 
