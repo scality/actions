@@ -17,7 +17,7 @@ jobs:
         id: pull-request
       - name: check version is bumped
         run: |
-          grep -Q "VERSION=1.2.4"
+          grep -q "VERSION=1.2.4"
       - name: check pr exists
         run: |
           gh pr view ${{ steps.pull-request.outputs.pull-request-url }}
