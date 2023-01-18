@@ -55,8 +55,8 @@ runs:
         git add ./VERSION
 
         # config git to commit
-        git config --local user.name ${{ github.actor }}@scality.com
-        git config --local user.email ${{ github.actor }}
+        git config --local user.name ${{ github.actor }}
+        git config --local user.email ${{ github.actor }}@scality.com
 
         # commit changes
         git commit -m "Bump version to ${NEW_VERSION}"

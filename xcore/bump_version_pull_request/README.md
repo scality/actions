@@ -1,7 +1,7 @@
 # Bump version and open Pull Request
 
 This action will bump the version of the calling component
-and open a pull requests to integrate the changes.
+and open a pull request to integrate the changes.
 
 ## Description
 
@@ -15,7 +15,7 @@ VERSION=X.Y.Z
 
 ## Inputs
 
-This action requires no inputs.
+This action requires no input.
 
 **But:** it requires to run on a system that has the following commands available:
 
@@ -38,7 +38,7 @@ This action has the following outputs:
 
 This repository includes a workflow that uses this action, you can use it as a very basic example.
 
-Otherwise here is a simple example during a release workflow
+Here is a simple example during a release workflow
 
 ```yaml
 name: Release
@@ -73,7 +73,6 @@ jobs:
     needs:
       - create-release
     env:
-      BRANCH: feature/bump_version_to_${{ inputs.tag }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout

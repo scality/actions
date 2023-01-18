@@ -15,6 +15,9 @@ jobs:
           echo "VERSION=1.2.3" > VERSION
       - uses: ./xcore/bump_version_pull_request
         id: pull-request
+      - name: check version is bumped
+        run: |
+          grep -Q "VERSION=1.2.4"
       - name: check pr exists
         run: |
           gh pr view ${{ steps.pull-request.outputs.pull-request-url }}
