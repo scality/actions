@@ -17,11 +17,12 @@ jobs:
         id: pull-request
       - name: check version is bumped
         run: |
-          grep -q "VERSION=1.2.4"
+          grep -q "VERSION=1.2.4" ./VERSION
       - name: check pr exists
         run: |
           gh pr view ${{ steps.pull-request.outputs.pull-request-url }}
       - name: close pr
+        if: always()
         run: |
           # fetch latest git info first
           git fetch --all
