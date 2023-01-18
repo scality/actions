@@ -17,7 +17,9 @@ jobs:
         id: pull-request
       - name: check pr exists
         run: |
-          gh pr view ${{ steps.pull-request.outputs.pull-request-url }} > /dev/null 2>&1
+          gh pr view ${{ steps.pull-request.outputs.pull-request-url }}
       - name: close pr
         run: |
+          # fetch latest git info first
+          git fetch --all
           gh pr close -d ${{ steps.pull-request.outputs.pull-request-url }}
