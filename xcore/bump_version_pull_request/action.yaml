@@ -1,0 +1,79 @@
+name: bump-version-pull-request
+description: |
+  Bump the patch level version of the current checked out repository.
+  Opens a new pull requests on the base branch of the current workflow.
+
+outputs:
+  pull-request-url:
+    description: url of the newly openned pull request
+    value: ${{ steps.pull-request.outputs.pull-request-url }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check git is installed
+      shell: bash
+      run: |
+        git --version
+    - name: Check gh (github cli tool) is installed
+      shell: bash
+      run: |
+        gh --version
+    - name: Check VERSION file exists
+      shell: bash
+      run: |
+        if [ ! -f ./VERSION ]; then
+          echo "file ./VERSION not found"
+          exit 1
+        fi
+    - name: install semver
+      shell: bash
+      run: |
+        curl --fail -LO https://raw.githubusercontent.com/fsaintjacques/semver-tool/3.3.0/src/semver
+        chmod +x ./semver
+    - name: extract version
+      shell: bash
+      id: version
+      run: |
+        source ./VERSION
+        echo "VERSION=${VERSION}" >> ${GITHUB_OUTPUT}
+    - name: increase patch level
+      id: bumped-version
+      shell: bash
+      run: |
+        new_version=$(./semver bump patch ${{ steps.version.outputs.VERSION }})
+        echo "new_version=${new_version}" >> ${GITHUB_OUTPUT}
+    - name: push changes
+      shell: bash
+      run: |
+        NEW_VERSION=${{ steps.bumped-version.outputs.new_version }}
+        git checkout -b feature/bump_version_${NEW_VERSION} ${{ github.ref }}
+
+        # update version patch level
+        sed -i "s/VERSION=.*/VERSION=${NEW_VERSION}/" ./VERSION
+
+        git add ./VERSION
+
+        # config git to commit
+        git config --local user.name ${{ github.actor }}
+        git config --local user.email ${{ github.actor }}@scality.com
+
+        # commit changes
+        git commit -m "Bump version to ${NEW_VERSION}"
+
+        git push --set-upstream origin feature/bump_version_${NEW_VERSION}
+    - name: Open pr
+      id: pull-request
+      shell: bash
+      run: |
+        new_pr=$(gh pr create -a ${{ github.actor }} --fill --base ${{ github.ref_name }})
+        echo "New PR opened: ${new_pr}"
+
+        # send to outputs
+        echo "pull-request-url=${new_pr}" >> ${GITHUB_OUTPUT}
+
+        # approve PR
+        gh pr comment ${new_pr} --body "/approve"
+
+        # add label
+        gh pr edit ${new_pr} --add-label "bump_version"

@@ -1,0 +1,29 @@
+name: 'Test upload Dockerfile'
+
+on:
+  push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v2
+      - name: create fake version file
+        run: |
+          echo "VERSION=1.2.3" > VERSION
+      - uses: ./xcore/bump_version_pull_request
+        id: pull-request
+      - name: check version is bumped
+        run: |
+          grep -q "VERSION=1.2.4" ./VERSION
+      - name: check pr exists
+        run: |
+          gh pr view ${{ steps.pull-request.outputs.pull-request-url }}
+      - name: close pr
+        if: always()
+        run: |
+          # fetch latest git info first
+          git fetch --all
+          gh pr close -d ${{ steps.pull-request.outputs.pull-request-url }}
