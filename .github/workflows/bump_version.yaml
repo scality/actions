@@ -1,0 +1,21 @@
+name: 'Test upload Dockerfile'
+
+on:
+  push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: create fake version file
+        run: |
+          echo "VERSION=1.2.3" > VERSION
+      - uses: ./xcore/bump_version_pull_request
+        id: pull-request
+      - name: check pr exists
+        run: |
+          gh pr view ${{ steps.pull-request.outputs.pull-request-url }} > /dev/null 2>&1
+      - name: close pr
+        run: |
+          gh pr close -d ${{ steps.pull-request.outputs.pull-request-url }}
