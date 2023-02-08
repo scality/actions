@@ -1,0 +1,27 @@
+name: "archive cores"
+description: 'Archive all cores corresponding to a given set of core_patterns'
+
+inputs:
+  dest:
+    description: Destination directory to archive cores to
+    required: true
+
+  core_patterns:
+    description: List of patterns where the cores might be searched.
+    required: true
+
+  ignore_filters:
+    description: >
+      Filters to ignore a found core (space separated, globs supported) applied
+      against the full backtrace.
+
+      This can for example be the function name that will always be present
+      in the relevant call stack.
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: "archive found cores"
+      shell: bash
+      run: ./archive-cores.sh ${{ inputs.dest }} ${{ inputs.ignore_filters }} ${{ inputs.core_patterns }}
