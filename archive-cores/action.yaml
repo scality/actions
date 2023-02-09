@@ -28,7 +28,9 @@ runs:
 
     - name: Ensures script is reachable
       shell: bash
-      run: echo "${{ github.action_path }}" >> $GITHUB_PATH
+      run: >
+        echo "${{ github.action_path }}" >> $GITHUB_PATH
+        ls ${{ github.action_path }}
 
     - name: Archive found cores
       shell: bash
