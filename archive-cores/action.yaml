@@ -22,6 +22,10 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: "archive found cores"
+    - name: Ensures dest directory exists
+      shell: bash
+      run: mkdir -p ${{ inputs.dest }}
+
+    - name: Archive found cores
       shell: bash
       run: ./archive-cores.sh ${{ inputs.dest }} ${{ inputs.ignore_filters }} ${{ inputs.core_patterns }}
