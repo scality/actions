@@ -26,6 +26,10 @@ runs:
       shell: bash
       run: mkdir -p ${{ inputs.dest }}
 
+    - name: Ensures script is reachable
+      shell: bash
+      run: echo "${{ github.action_path }}" >> $GITHUB_PATH
+
     - name: Archive found cores
       shell: bash
       run: archive-cores.sh ${{ inputs.dest }} ${{ inputs.ignore_filters }} ${{ inputs.core_patterns }}
