@@ -28,4 +28,4 @@ runs:
 
     - name: Archive found cores
       shell: bash
-      run: ./archive-cores.sh ${{ inputs.dest }} ${{ inputs.ignore_filters }} ${{ inputs.core_patterns }}
+      run: archive-cores.sh ${{ inputs.dest }} ${{ inputs.ignore_filters }} ${{ inputs.core_patterns }}
