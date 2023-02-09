@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -euxo pipfail
 
 # Archive all cores corresponding to a given set of core_patterns to
 # $artifacts_output_directory/cores.
