@@ -29,8 +29,8 @@ runs:
     - name: Ensures script is reachable
       shell: bash
       run: >
-        stat ${{ github.action_path }}/archive_cores.sh
+        stat ${GITHUB_ACTION_PATH}/archive_cores.sh
 
     - name: Archive found cores
       shell: bash
-      run: ${{ github.action_path}}/archive_cores.sh ${{ inputs.dest }} ${{ inputs.ignore_filters }} ${{ inputs.core_patterns }}
+      run: ${GITHUB_ACTION_PATH}/archive_cores.sh ${{ inputs.dest }} ${{ inputs.ignore_filters }} ${{ inputs.core_patterns }}
