@@ -29,4 +29,4 @@ runs:
 
     - name: Archive found cores
       shell: bash
-      run: ${GITHUB_ACTION_PATH}/archive_cores.sh ${{ inputs.dest }} ${{ inputs.ignore_filters }} ${{ inputs.core_patterns }}
+      run: ${GITHUB_ACTION_PATH}/archive_cores.sh ${{ inputs.dest }} "${{ inputs.ignore_filters }}" ${{ inputs.core_patterns }}
