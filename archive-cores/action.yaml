@@ -29,7 +29,7 @@ runs:
     - name: Ensures script is reachable
       shell: bash
       run: >
-        stat ${{ github.action_path }}/archive-cores.sh
+        stat ${{ github.action_path }}/archive-cores/archive-cores.sh
 
     - name: Archive found cores
       shell: bash
