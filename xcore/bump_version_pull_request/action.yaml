@@ -74,6 +74,3 @@ runs:
 
         # approve PR
         gh pr comment ${new_pr} --body "/approve"
-
-        # add label
-        gh pr edit ${new_pr} --add-label "bump_version"
