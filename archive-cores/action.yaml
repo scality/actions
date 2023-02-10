@@ -3,15 +3,19 @@ description: 'Archive all cores corresponding to a given set of core_patterns'
 
 inputs:
   dest:
-    description: Destination directory to archive cores to
+    description: |
+      Destination directory to archive cores to. A subdirectory
+      'cores' will be created under that destination directory
     required: true
 
   core_patterns:
-    description: List of patterns where the cores might be searched.
+    description: |
+      List of paths where the cores might be searched. Glob paths
+      are supported to filter core files from the others.
     required: true
 
   ignore_filters:
-    description: >
+    description: |
       Filters to ignore a found core (space separated, globs supported) applied
       against the full backtrace.
 
@@ -22,11 +26,6 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Ensures script is reachable
-      shell: bash
-      run: >
-        stat ${GITHUB_ACTION_PATH}/archive_cores.sh
-
     - name: Archive found cores
       shell: bash
-      run: ${GITHUB_ACTION_PATH}/archive_cores.sh "${{ inputs.dest }}" "${{ inputs.ignore_filters }}" ${{ inputs.core_patterns }}
+      run: ${GITHUB_ACTION_PATH}/archive-cores.sh "${{ inputs.dest }}" "${{ inputs.ignore_filters }}" ${{ inputs.core_patterns }}
