@@ -1,5 +1,5 @@
 #!/bin/bash
-set -xeuo pipefail
+set -o pipefail
 
 # Archive all cores corresponding to a given set of core_patterns to
 # $artifacts_output_directory/cores.
@@ -18,11 +18,11 @@ ARTIFACTS="$1"
 EXPECTED_CRASHES="$2"
 shift
 shift
-CORE_PATTERNS=( "$@" )
+CORE_PATTERNS="$@"
 
 OUTPUT_DIR="${ARTIFACTS}/cores"
 
-CORES="$(ls -dUN "${CORE_PATTERNS[@]}" || /bin/true 2> /dev/null)"
+CORES="$(ls -dUN $CORE_PATTERNS || /bin/true 2> /dev/null)"
 
 is_expected_crash()
 {
