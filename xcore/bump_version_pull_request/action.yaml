@@ -75,5 +75,5 @@ runs:
         # approve PR
         gh pr comment ${new_pr} --body "/approve"
 
-        # add label
-        gh pr edit ${new_pr} --add-label "bump_version"
+        # add "bump_version" label to the PR if this label is present for the repository
+        gh label list | grep -q '^bump_version\s' && gh pr edit ${new_pr} --add-label "bump_version"
