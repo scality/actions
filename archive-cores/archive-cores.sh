@@ -1,5 +1,5 @@
 #!/bin/bash
-set -xeuo pipefail
+set -euo pipefail
 
 # Archive all cores corresponding to a given set of core_patterns to
 # $artifacts_output_directory/cores.
@@ -22,7 +22,9 @@ CORE_PATTERNS="$@"
 
 OUTPUT_DIR="${ARTIFACTS}/cores"
 
-CORES="$(ls -dUN $CORE_PATTERNS || /bin/true 2> /dev/null)"
+# Piping into xargs is sometime necessary when globs are single quoted
+# by the caller.
+CORES="$(echo $CORE_PATTERNS | xargs ls -dUN || /bin/true 2> /dev/null)"
 
 is_expected_crash()
 {
@@ -36,7 +38,8 @@ is_expected_crash()
         fi
     done
 
-    # Externally sent SIGSEV to test biz* daemons behavior
+    # Ignores externally sent SIGSEGV signals. This might be used to test behavior
+    # of the process when encountering this exception.
     if grep '^#3  <signal handler called>' -A2 "$bt_full" | grep -q '^#4 .*\(epoll_wait\|libpthread\)'; then
         echo "Known and expected crash of $bin: daemon externally killed with SIGSEGV, skipping"
         return 0
