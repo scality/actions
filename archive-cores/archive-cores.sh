@@ -2,20 +2,24 @@
 set -euo pipefail
 
 # Archive all cores corresponding to a given set of core_patterns to
-# $artifacts_output_directory/cores.
+# $dest_directory/cores.
+#
 # When possible, the binary that generated the core is also archived, and
 # backtraces are generated and archived.
 #
+# Ignore filters are applied against each found backtrace to determine if the
+# core should be archived or not.
+#
 # Example:
-# ./archive_cores.sh $ARTIFACT_DIR ./core.* /tmp/core.*
+# ./archive_cores.sh $ARTIFACT_DIR "daemontest" ./core.* /tmp/core.*
 
 if [ "$#" -lt 2 ]; then
-    echo "usage: $0 <artifacts_output_directory> <core_patterns...>"
+    echo "usage: $0 <dest_directory> <ignore_filters> <core_patterns...>"
     exit 1
 fi
 
 DEST="$1"
-EXPECTED_CRASHES="$2"
+IGNORE_FILTERS="$2"
 shift
 shift
 CORE_PATTERNS="$@"
@@ -31,7 +35,7 @@ is_expected_crash()
     local bt_full="$1"
     local bin="$2"
 
-    for match in $EXPECTED_CRASHES; do
+    for match in $FILTER_PATTERNS; do
         if grep -q "$match" "$bt_full"; then
             echo "Known and expected crash of $bin: $match, skipping"
             return 0
