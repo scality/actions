@@ -1,0 +1,27 @@
+name: 'Test failed final status'
+
+on:
+  push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # we needs this in order to successfully pass the test
+    continue-on-error: true
+    steps:
+      - name: simulate a failure in a job
+        run: exit 1
+
+  final-status:
+    runs-on: ubuntu-latest
+    needs:
+      - test
+    steps:
+      - uses: actions/checkout@v3
+      - uses: ./upload_final_status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        if: always()
+        with:
+          ARTIFACTS_USER: ${{ secrets.ARTIFACTS_USER }}
+          ARTIFACTS_PASSWORD: ${{ secrets.ARTIFACTS_PASSWORD }}
