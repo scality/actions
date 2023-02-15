@@ -26,7 +26,7 @@ to use with the github cli tool `gh`.
 
 - `GH_TOKEN`: usually it is set to `${{ github.token }}`
 
-  but can be any token like: `${{ secrets.GIT_ACCESS_TOKEN }}`
+  but can be any GitHub token, like: `${{ secrets.MY_GITHUB_TOKEN }}`
 
 as follow:
 
