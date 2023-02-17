@@ -8,6 +8,9 @@ inputs:
   ARTIFACTS_PASSWORD:
     description: The artifact password to upload the status
     required: true
+  JOBS_RESULTS:
+    descript: Concatenation of jobs results
+    required: true
 
 runs:
   using: composite
@@ -21,12 +24,12 @@ runs:
         echo "TEMP=$TEMP" >> $GITHUB_OUTPUT
     - name: write failed result
       shell: bash
-      if: failure()
+      if: ${{ contains(inputs.JOBS_RESULTS, 'failed') || contains(inputs.JOBS_RESULTS, 'cancelled') || contains(inputs.JOBS_RESULTS, 'skipped') }}
       run: |
         echo -n "FAILED" > ${{ steps.temp-dir.outputs.TEMP }}/.final_status
     - name: write successful result
       shell: bash
-      if: success()
+      if: ${{ !contains(inputs.JOBS_RESULTS, 'failed') && !contains(inputs.JOBS_RESULTS, 'cancelled') && !contains(inputs.JOBS_RESULTS, 'skipped') }}
       run: |
         echo -n "SUCCESSFUL" > ${{ steps.temp-dir.outputs.TEMP }}/.final_status
     - name: upload file to artifacts
