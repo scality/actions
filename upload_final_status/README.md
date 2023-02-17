@@ -14,10 +14,11 @@ The action requires the artifact `usrename` and `password` in order to upload th
 
 ### Inputs
 
-| Name               | Description            | Required |
-|--------------------|------------------------|----------|
-| ARTIFACTS_USER     | The artifacts username | ✅        |
-| ARTIFACTS_PASSWORD | The artifacts password | ✅        |
+| Name               | Description                   | Required |
+|--------------------|-------------------------------|----------|
+| ARTIFACTS_USER     | The artifacts username        | ✅       |
+| ARTIFACTS_PASSWORD | The artifacts password        | ✅       |
+| JOBS_RESULTS       | Concatenation of jobs results | ✅       |
 
 **Note:** it is important to set the `always()` condition on the step
 that calls this action so it's always called at the end.
@@ -57,5 +58,6 @@ jobs:
         with:
           ARTIFACTS_USER: ${{ secrets.ARTIFACTS_USER }}
           ARTIFACTS_PASSWORD: ${{ secrets.ARTIFACTS_PASSWORD }}
+          JOBS_RESULTS: ${{ join(needs.*.result) }}
 
 ```
