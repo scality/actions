@@ -11,6 +11,12 @@ inputs:
   artifacts-to-promote:
     required: true
     description: artifacts name to promote
+  artifacts-user:
+    required: true
+    description: artifacts username
+  artifacts-password:
+    required: true
+    description: artifacts password
 
 runs:
   using: "composite"
@@ -44,6 +50,18 @@ runs:
           echo "artifacts commit and current HEAD commit don't match" >&2
           echo "artifacts commit: $ARTIFACTS_COMMIT" >&2
           echo "HEAD commit: $HEAD_COMMIT" >&2
+          exit 1
+        fi
+    - name: Ensure artifacts are successfull
+      shell: bash
+      run: |
+        ARTIFACT_SUCCESS=$(curl \
+            --fail \
+            -L \
+            -u ${{ inputs. artifacts-user }}:${{ inputs.artifacts-password }} \
+            https://artifacts.scality.net/builds/${{ inputs.artifacts-to-promote }}/.final_status)
+        if [[ "$ARTIFACT_SUCCESS" != "SUCCESSFUL" ]]; then
+          echo "given artifacts are not successful artifacts" >&2
           exit 1
         fi
     - name: Ensure tag matches local version
