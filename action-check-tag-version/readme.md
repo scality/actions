@@ -29,14 +29,14 @@ The action requires the artifacts `username` and `password` in order to check th
 |----------------------|-------------------------------|----------|
 | tag                  | The tag to be released        | ✅       |
 | version              | The version to be released    | ✅       |
-| artifacts-to-promote | The artifacts to promot       | ✅       |
+| artifacts-to-promote | The artifacts to promote      | ✅       |
 | ARTIFACTS_USER       | The artifacts username        | ✅       |
 | ARTIFACTS_PASSWORD   | The artifacts password        | ✅       |
 
 ## Example
 
 Here is an example of a workflow that uses that action.
-The workflow example woks as follow:
+The workflow example works as follow:
 
 ```yaml
 name: release
@@ -70,6 +70,8 @@ jobs:
           tag: ${{ inputs.tag }}
           version: ${{ steps.version.outputs.VERSION }}
           artifacts-to-promote: ${{ inputs.artifacts-to-promote }}
+          artifacts-user: ${{ secrets.ARTIFACTS_USER }}
+          artifacts-password: ${{ secrets.ARTFICATS_PASSWORD }}
       - name: Create Release
         uses: softprops/action-gh-release@v1
         env:
