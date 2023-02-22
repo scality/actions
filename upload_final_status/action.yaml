@@ -9,7 +9,7 @@ inputs:
     description: The artifact password to upload the status
     required: true
   JOBS_RESULTS:
-    descript: Concatenation of jobs results
+    description: Concatenation of jobs results
     required: true
 
 runs:
