@@ -30,8 +30,8 @@ The action requires the artifacts `username` and `password` in order to check th
 | tag                  | The tag to be released        | ✅       |
 | version              | The version to be released    | ✅       |
 | artifacts-to-promote | The artifacts to promote      | ✅       |
-| ARTIFACTS_USER       | The artifacts username        | ✅       |
-| ARTIFACTS_PASSWORD   | The artifacts password        | ✅       |
+| artifacts-user       | The artifacts username        | ✅       |
+| artifacts-password   | The artifacts password        | ✅       |
 
 ## Example
 
