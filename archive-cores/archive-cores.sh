@@ -35,7 +35,7 @@ is_expected_crash()
     local bt_full="$1"
     local bin="$2"
 
-    for match in $FILTER_PATTERNS; do
+    for match in $IGNORE_FILTERS; do
         if grep -q "$match" "$bt_full"; then
             echo "Known and expected crash of $bin: $match, skipping"
             return 0
