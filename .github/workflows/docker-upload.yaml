@@ -16,6 +16,21 @@ jobs:
       - run: docker pull "ghcr.io/${{ github.repository }}/test:${{ github.sha }}"
       - uses: ./upload_final_status
         if: always()
+        id: artifacts
         with:
           ARTIFACTS_USER: ${{ secrets.ARTIFACTS_USER }}
           ARTIFACTS_PASSWORD: ${{ secrets.ARTIFACTS_PASSWORD }}
+      - name: print outputs
+        run: |
+          echo "Link: ${{ steps.artifacts.outputs.link }}"
+          echo "Name: ${{ steps.artifacts.outputs.name }}"
+      - name: ensure outputs contains link and name
+        shell: python
+        run: |
+          link_prefix = "https://artifacts.scality.net/builds/github:scality:actions:staging-"
+          if "${{ steps.artifacts.outputs.link }}".find(link_prefix) < 0:
+            raise RuntimeError("the ouput link does not contain the expected prefix")
+
+          name_prefix = "github:scality:actions:staging-"
+          if "${{ steps.artifacts.outputs.name }}".find(name_prefix) < 0:
+            raise RuntimeError("the output name doe snot contain the expected name")
