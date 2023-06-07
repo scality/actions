@@ -33,4 +33,4 @@ jobs:
 
           name_prefix = "github:scality:actions:staging-"
           if "${{ steps.artifacts.outputs.name }}".find(name_prefix) < 0:
-            raise RuntimeError("the output name doe snot contain the expected name")
+            raise RuntimeError("the output name does not contain the expected name")
