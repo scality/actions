@@ -12,6 +12,18 @@ inputs:
     description: Concatenation of jobs results
     required: true
 
+outputs:
+  name:
+    description: |
+      The name of the artifacts for a specific workflow.
+      This name will be unique for the whole workflow and can be
+      used by further steps to locate the artifacts inside a job.
+    value: ${{ steps.artifacts.outputs.name }}
+  link:
+    description: |
+      The full url in which artifacts will be stored.
+    value: ${{ steps.artifacts.outputs.link }}
+
 runs:
   using: composite
   steps:
@@ -34,6 +46,7 @@ runs:
         echo -n "SUCCESSFUL" > ${{ steps.temp-dir.outputs.TEMP }}/.final_status
     - name: upload file to artifacts
       uses: scality/action-artifacts@v3
+      id: artifacts
       with:
         method: upload
         url: https://artifacts.scality.net
