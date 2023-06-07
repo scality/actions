@@ -53,3 +53,12 @@ runs:
         user: ${{ inputs.ARTIFACTS_USER }}
         password: ${{ inputs.ARTIFACTS_PASSWORD }}
         source: ${{ steps.temp-dir.outputs.TEMP }}
+    - name: Print artifact link to job summary
+      shell: bash
+      run: |
+        cat <<EOF >> ${GITHUB_STEP_SUMMARY}
+        # Artifacts
+        ---
+
+        [${{ steps.artifacts.outputs.name }}](${{ steps.artifacts.outputs.link }})
+        EOF
