@@ -12,7 +12,7 @@ jobs:
         with:
           name: 'test'
           docker_context: './.github/docker'
-          access_token: ${{ secrets.GITHUB_TOKEN }}
+          registry_access_token: ${{ secrets.GITHUB_TOKEN }}
       - run: docker pull "ghcr.io/${{ github.repository }}/test:${{ github.sha }}"
       - uses: ./upload_final_status
         if: always()
