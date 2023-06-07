@@ -16,6 +16,10 @@ jobs:
       - run: docker pull "ghcr.io/${{ github.repository }}/test:${{ github.sha }}"
       - uses: ./upload_final_status
         if: always()
+        id: artifacts
         with:
           ARTIFACTS_USER: ${{ secrets.ARTIFACTS_USER }}
           ARTIFACTS_PASSWORD: ${{ secrets.ARTIFACTS_PASSWORD }}
+      - name: print outputs
+        run: |
+          echo "Link: ${{ steps.artifacts.outputs.link }}"
