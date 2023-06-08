@@ -36,12 +36,12 @@ runs:
         echo "TEMP=$TEMP" >> $GITHUB_OUTPUT
     - name: write failed result
       shell: bash
-      if: ${{ contains(inputs.JOBS_RESULTS, 'failed') || contains(inputs.JOBS_RESULTS, 'cancelled') || contains(inputs.JOBS_RESULTS, 'skipped') }}
+      if: ${{ contains(inputs.JOBS_RESULTS, 'failure') || contains(inputs.JOBS_RESULTS, 'cancelled') || contains(inputs.JOBS_RESULTS, 'skipped') }}
       run: |
         echo -n "FAILED" > ${{ steps.temp-dir.outputs.TEMP }}/.final_status
     - name: write successful result
       shell: bash
-      if: ${{ !contains(inputs.JOBS_RESULTS, 'failed') && !contains(inputs.JOBS_RESULTS, 'cancelled') && !contains(inputs.JOBS_RESULTS, 'skipped') }}
+      if: ${{ !contains(inputs.JOBS_RESULTS, 'failure') && !contains(inputs.JOBS_RESULTS, 'cancelled') && !contains(inputs.JOBS_RESULTS, 'skipped') }}
       run: |
         echo -n "SUCCESSFUL" > ${{ steps.temp-dir.outputs.TEMP }}/.final_status
     - name: upload file to artifacts
