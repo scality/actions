@@ -1,0 +1,85 @@
+name: 'Clean up OpenStack vms'
+description: 'this action is to clean up vms in openstack'
+
+
+inputs:
+  DELTA:
+    description: the default age of the VM
+    default: 6
+    required: false
+  CLOUD:
+    description: the cloud provider
+    required: false
+    default: 'openstack'
+  PASSWORD:
+    description: the password of the openstack client
+    required: true
+  AUTH_URL:
+    description: the url of the openstack client
+    required: true
+  USERNAME:
+    description: the username of the openstack client
+    required: true
+  REGION:
+    description: the region of the openstack client
+    required: true
+  PROJECT_DOMAIN_ID:
+    description: the project id of the openstack client
+    required: false
+    default: '${PROJECT_DOMAIN:-"default"}'
+  USER_DOMAIN_ID:
+    description: the project id of the openstack client
+    required: false
+    default: '${USER_DOMAIN:-"default"}'
+  TENANT_NAME:
+    description: the tenant of the openstack client
+    required: true
+
+env:
+  OS_PASSWORD: ${{ inputs.PASSWORD }}
+  OS_AUTH_URL: ${{ inputs.AUTH_URL }}
+  OS_USERNAME: ${{ inputs.USERNAME }}
+  OS_TENANT_NAME: ${{ inputs.TENANT_NAME }}
+  OS_REGION: ${{ inputs.REGION }}
+  OS_PROJECT_DOMAIN_ID: ${{ inputs.PROJECT_DOMAIN_ID }}
+  OS_USER_DOMAIN_ID: ${{ inputs.USER_DOMAIN_ID }}
+
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install requirements
+      run: |-
+        set -e
+        sudo yum install -y epel-release
+        sudo yum install -y python36-pip
+        python3.6 -m pip install --user --upgrade pip
+        python3.6 -m pip install --user python-openstackclient
+      if: inputs.CLOUD == 'openstack'
+    - name: Get list of VMs
+      run: openstack server list -f value -c ID
+      id: vm_list
+    - name: delete idle VMS
+      run: |-
+        set -e
+        delta=$(date -d "${{ inputs.DELTA }} hours ago" +%s)
+        for vm in ${{ steps.vm_list.outputs }}; do
+          creation_time=$(openstack server show -f value -c created "$vm")
+          timestamp=$(date -d "$creation_time" +%s)
+          
+          if [ "$timestamp" -lt "$delta" ]; then
+            openstack server delete --verbose "$vm" > delete_artifacts
+          fi
+        done
+
+    - name: Upload to artifacts
+      uses: scality/action-artifacts@v3
+      if: always()
+      with:
+        method: upload
+        url: https://artifacts.scality.net
+        user: ${{ secrets.ARTIFACTS_USER }}
+        password: ${{ secrets.ARTIFACTS_PASSWORD }}
+        source: ./delete_artifacts
+
+
