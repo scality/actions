@@ -1,11 +1,11 @@
 # Overview
 
-This action is clean up VMs that are older than a certain period of time in openstack
+This action is made to clean up VMs that are older than a certain period of time in an OpenStack cluster.
 
 # Example
 
 ```yaml
-name: "clean up idle VMs in OVH openstack"
+name: "clean up idle VMs in OVH OpenStack"
 
 on:
   workflow_dispatch:
@@ -22,7 +22,7 @@ jobs:
           CLOUD: ${{ env.CLOUD }}
           AUTH_URL: ${{ secrets.AUTH_URL }}
           REGION: ${{ secrets.REGION }}
-          USERNAME: ${{secrets.USERNAME }}
+          USERNAME: ${{ secrets.USERNAME }}
           PASSWORD: ${{ secrets.PASSWORD }}
           TENANT_NAME: ${{ secrets.TENANT_NAME }}
 ```

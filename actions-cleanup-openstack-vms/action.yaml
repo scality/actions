@@ -1,5 +1,5 @@
-name: 'Clean up OpenStack vms'
-description: 'this action is to clean up vms in openstack'
+name: 'Clean up OpenStack VMs'
+description: 'This action is to clean up VMs in OpenStack'
 
 
 inputs:
@@ -12,7 +12,7 @@ inputs:
     required: false
     default: 'openstack'
   PASSWORD:
-    description: the password of the openstack client
+    description: the password of the OpenStack client
     required: true
   AUTH_URL:
     description: the url of the openstack client
@@ -28,7 +28,7 @@ inputs:
     required: false
     default: '${PROJECT_DOMAIN:-"default"}'
   USER_DOMAIN_ID:
-    description: the project id of the openstack client
+    description: the user id of the openstack client
     required: false
     default: '${USER_DOMAIN:-"default"}'
   TENANT_NAME:
@@ -81,5 +81,3 @@ runs:
         user: ${{ secrets.ARTIFACTS_USER }}
         password: ${{ secrets.ARTIFACTS_PASSWORD }}
         source: ./delete_artifacts
-
-
