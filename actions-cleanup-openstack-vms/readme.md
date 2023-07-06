@@ -1,6 +1,6 @@
 # Overview
 
-This action is made to delete VMs that are older than a certain period of time in an OpenStack cluster.
+This action is made to delete VMs that are older than a certain number of hours in an OpenStack cluster.
 
 # Example
 
@@ -14,14 +14,14 @@ on:
 
 jobs:
   cleanup:
-    runs-on: [self-hosted, centos7, large] # only centos7 runners is supported
+    runs-on: [self-hosted, centos7, large] # only centos7 runners are supported
     steps:
       - name: Clean up old VMs in OpenStack
         uses: scality/actions/actions-cleanup-openstack-vms
         with:
           # these secrets should be added to the repository secrets
           AUTH_URL: ${{ secrets.<AUTH_URL> }}
-          AGE: 6 # deletes VMs older than 6 hours
+          AGE_HOURS: 6 # max age before removal
           REGION: ${{ secrets.<REGION> }}
           USERNAME: ${{ secrets.<USERNAME> }}
           PASSWORD: ${{ secrets.<PASSWORD> }}

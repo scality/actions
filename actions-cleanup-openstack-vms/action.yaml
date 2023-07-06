@@ -2,8 +2,8 @@ name: 'Delete OpenStack VMs'
 description: 'This action is to delete OpenStack VMs older than a certain period of time'
 
 inputs:
-  AGE:
-    description: 'the default age of the VM. 6 hours after which it would be deleted'
+  AGE_HOURS:
+    description: 'the maximum age of the VM in hours; an older VM will be deleted'
     default: 6
     required: false
   CLOUD:
@@ -68,12 +68,12 @@ runs:
       shell: bash
       run: openstack server list -f value -c ID
       id: vm_list
-    - name: delete idle VMS
+    - name: Delete old VMs
       shell: bash
       run: |-
         set -e
         mkdir -p ../vm_artifacts
-        delta=$(date -d "${{ inputs.AGE }} hours ago" +%s)
+        delta=$(date -d "${{ inputs.AGE_HOURS }} hours ago" +%s)
         if [ -z "{{ steps.vm_list.outputs.stdout }}" ]; then
           for vm in ${{ steps.vm_list.outputs.stdout }}; do
             creation_time=$(openstack server show -f value -c created "$vm")
@@ -83,7 +83,7 @@ runs:
             fi
           done
         fi
-    - name: Upload to artifacts
+    - name: Upload logs to artifacts
       uses: scality/action-artifacts@v3
       if: always()
       with:
