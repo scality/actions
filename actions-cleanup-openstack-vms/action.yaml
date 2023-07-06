@@ -14,7 +14,7 @@ inputs:
     description: 'the password of the OpenStack client'
     required: true
   AUTH_URL:
-    description: 'the url of the OpenStack client'
+    description: 'the URL of the OpenStack client'
     required: true
   USERNAME:
     description: 'the username of the OpenStack client'
