@@ -1,5 +1,5 @@
 name: 'Delete OpenStack VMs'
-description: 'This action is to delete openstack VMs older than a certain period of time'
+description: 'This action is to delete OpenStack VMs older than a certain period of time'
 
 inputs:
   AGE:
@@ -20,7 +20,7 @@ inputs:
     description: 'the username of the OpenStack client'
     required: true
   REGION:
-    description: 'the region of the openStack client'
+    description: 'the region of the OpenStack client'
     required: true
   PROJECT_DOMAIN_ID:
     description: 'the project id of the OpenStack client'
