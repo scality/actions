@@ -1,11 +1,11 @@
 # Overview
 
-This action is made to clean up VMs that are older than a certain period of time in an OpenStack cluster.
+This action is made to delete VMs that are older than a certain period of time in an OpenStack cluster.
 
 # Example
 
 ```yaml
-name: "clean up idle VMs in OVH OpenStack"
+name: "delete old VMs in OpenStack"
 
 on:
   workflow_dispatch:
@@ -14,15 +14,19 @@ on:
 
 jobs:
   cleanup:
-    runs-on: [self-hosted, centos7, large]
+    runs-on: [self-hosted, centos7, large] # only centos7 runners is supported
     steps:
-      - name: Clean up orphan VMs in ${{ env.CLOUD }}
+      - name: Clean up old VMs in OpenStack
         uses: scality/actions/actions-cleanup-openstack-vms
         with:
-          CLOUD: ${{ env.CLOUD }}
-          AUTH_URL: ${{ secrets.AUTH_URL }}
-          REGION: ${{ secrets.REGION }}
-          USERNAME: ${{ secrets.USERNAME }}
-          PASSWORD: ${{ secrets.PASSWORD }}
-          TENANT_NAME: ${{ secrets.TENANT_NAME }}
+          # these secrets should be added to the repository secrets
+          AUTH_URL: ${{ secrets.<AUTH_URL> }}
+          AGE: 6 # deletes VMs older than 6 hours
+          REGION: ${{ secrets.<REGION> }}
+          USERNAME: ${{ secrets.<USERNAME> }}
+          PASSWORD: ${{ secrets.<PASSWORD> }}
+          PROJECT_NAME: ${{ secrets.<PROJECT_NAME> }}
+          PROJECT_ID: ${{ secrets.<PROJECT_ID> }}
+          ARTIFACTS_PASSWORD: ${{ secrets.ARTIFACTS_PASSWORD }}
+          ARTIFACTS_USER: ${{ secrets.ARTIFACTS_USER }}
 ```
