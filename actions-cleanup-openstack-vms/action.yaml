@@ -1,0 +1,94 @@
+name: 'Delete OpenStack VMs'
+description: 'This action is to delete OpenStack VMs older than a certain period of time'
+
+inputs:
+  AGE_HOURS:
+    description: 'the maximum age of the VM in hours; an older VM will be deleted'
+    default: 6
+    required: false
+  CLOUD:
+    description: the cloud provider
+    required: false
+    default: 'openstack'
+  PASSWORD:
+    description: 'the password of the OpenStack client'
+    required: true
+  AUTH_URL:
+    description: 'the URL of the OpenStack client'
+    required: true
+  USERNAME:
+    description: 'the username of the OpenStack client'
+    required: true
+  REGION:
+    description: 'the region of the OpenStack client'
+    required: true
+  PROJECT_DOMAIN_ID:
+    description: 'the project id of the OpenStack client'
+    required: false
+    default: 'default'
+  USER_DOMAIN_ID:
+    description: 'the user id of the OpenStack client'
+    required: false
+    default: 'default'
+  PROJECT_NAME:
+    description: 'the tenant of the OpenStack client'
+    required: true
+  PROJECT_ID:
+    description: 'the tenant id of the OpenStack client'
+    required: true
+  ARTIFACTS_PASSWORD:
+    required: true
+  ARTIFACTS_USER:
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install requirements
+      shell: bash
+      run: |-
+        set -e
+        sudo yum install -y epel-release
+        sudo yum install -y https://rdoproject.org/repos/rdo-release.rpm
+        sudo yum install -y python-openstackclient
+      if: inputs.CLOUD == 'openstack'
+    - name: Authenticate
+      shell: bash
+      run: |-
+        echo "OS_PASSWORD=${{ inputs.PASSWORD }}" >> $GITHUB_ENV
+        echo "OS_AUTH_URL=${{ inputs.AUTH_URL }}" >> $GITHUB_ENV
+        echo "OS_USERNAME=${{ inputs.USERNAME }}" >> $GITHUB_ENV
+        echo "OS_PROJECT_NAME=${{ inputs.PROJECT_NAME }}" >> $GITHUB_ENV
+        echo "OS_PROJECT_ID=${{ inputs.PROJECT_ID }}" >> $GITHUB_ENV
+        echo "OS_REGION=${{ inputs.REGION }}" >> $GITHUB_ENV
+        echo "OS_PROJECT_DOMAIN_ID=${{ inputs.PROJECT_DOMAIN_ID }}" >> $GITHUB_ENV
+        echo "OS_USER_DOMAIN_ID=${{ inputs.USER_DOMAIN_ID }}" >> $GITHUB_ENV
+        echo "OS_IDENTITY_API_VERSION=3" >> $GITHUB_ENV
+    - name: Get list of VMs
+      shell: bash
+      run: openstack server list -f value -c ID
+      id: vm_list
+    - name: Delete old VMs
+      shell: bash
+      run: |-
+        set -e
+        mkdir -p ../vm_artifacts
+        delta=$(date -d "${{ inputs.AGE_HOURS }} hours ago" +%s)
+        if [ -z "{{ steps.vm_list.outputs.stdout }}" ]; then
+          for vm in ${{ steps.vm_list.outputs.stdout }}; do
+            creation_time=$(openstack server show -f value -c created "$vm")
+            timestamp=$(date -d "$creation_time" +%s)
+            if [ "$timestamp" -lt "$delta" ]; then
+              openstack server delete --verbose "$vm" &> ../vm_artifacts/delete_artifacts
+            fi
+          done
+        fi
+    - name: Upload logs to artifacts
+      uses: scality/action-artifacts@v3
+      if: always()
+      with:
+        method: upload
+        url: https://artifacts.scality.net
+        user: ${{ inputs.ARTIFACTS_USER }}
+        password: ${{ inputs.ARTIFACTS_PASSWORD }}
+        source: ../vm_artifacts
