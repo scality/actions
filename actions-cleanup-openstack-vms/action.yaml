@@ -85,11 +85,11 @@ runs:
             creation_time=$(openstack server show -f value -c created "$vm")
             timestamp=$(date -d "$creation_time" +%s)
             if [ "$timestamp" -lt "$delta" ]; then
-              openstack server delete --verbose "$vm" &>  ${{ steps.temp-dir.outputs.TEMP }}/.delete_status
+              openstack server delete --verbose "$vm" &>  ${{ steps.temp-dir.outputs.TEMP }}/.delete.log
             fi
           done
         else
-          echo "No vm to delete" >> ${{ steps.temp-dir.outputs.TEMP }}/.delete_status
+          echo "No vm to delete" >> ${{ steps.temp-dir.outputs.TEMP }}/.delete.log
         fi
     - name: Upload logs to artifacts
       uses: scality/action-artifacts@v3
