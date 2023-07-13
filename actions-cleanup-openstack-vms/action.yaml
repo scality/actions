@@ -66,7 +66,7 @@ runs:
         echo "OS_IDENTITY_API_VERSION=3" >> $GITHUB_ENV
     - name: Get list of VMs
       shell: bash
-      run: openstack server list -f value -c ID
+      run: echo "VM_LIST=$(openstack server list -f value -c ID)" >> "$GITHUB_OUTPUT"
       id: vm_list
     - name: Delete old VMs
       shell: bash
@@ -74,14 +74,16 @@ runs:
         set -e
         mkdir -p ../vm_artifacts
         delta=$(date -d "${{ inputs.AGE_HOURS }} hours ago" +%s)
-        if [ -z "{{ steps.vm_list.outputs.stdout }}" ]; then
-          for vm in ${{ steps.vm_list.outputs.stdout }}; do
+        if [ -z "{{ steps.vm_list.outputs.VM_LIST }}" ]; then
+          for vm in ${{ steps.vm_list.outputs.VM_LIST }}; do
             creation_time=$(openstack server show -f value -c created "$vm")
             timestamp=$(date -d "$creation_time" +%s)
             if [ "$timestamp" -lt "$delta" ]; then
               openstack server delete --verbose "$vm" &> ../vm_artifacts/delete_artifacts
             fi
           done
+        else
+          echo "No Vms to delete" >> ../vm_artifacts/delete_artifacts
         fi
     - name: Upload logs to artifacts
       uses: scality/action-artifacts@v3
