@@ -64,26 +64,32 @@ runs:
         echo "OS_PROJECT_DOMAIN_ID=${{ inputs.PROJECT_DOMAIN_ID }}" >> $GITHUB_ENV
         echo "OS_USER_DOMAIN_ID=${{ inputs.USER_DOMAIN_ID }}" >> $GITHUB_ENV
         echo "OS_IDENTITY_API_VERSION=3" >> $GITHUB_ENV
+    - name: create artifacts folder
+      id: temp-dir
+      shell: bash
+      run: |
+        TEMP=$(mktemp -d)
+        echo "Temp directory: ${TEMP}"
+        echo "TEMP=$TEMP" >> $GITHUB_OUTPUT
     - name: Get list of VMs
       shell: bash
-      run: echo "VM_LIST=$(openstack server list -f value -c ID)" >> "$GITHUB_OUTPUT"
+      run: echo "VM_LIST=$(openstack server list -f value -c ID)" >> $GITHUB_ENV
       id: vm_list
     - name: Delete old VMs
       shell: bash
       run: |-
         set -e
-        mkdir -p ../vm_artifacts
         delta=$(date -d "${{ inputs.AGE_HOURS }} hours ago" +%s)
-        if [ -z "{{ steps.vm_list.outputs.VM_LIST }}" ]; then
-          for vm in "${{ steps.vm_list.outputs.VM_LIST }}"; do
+        if [ -n "$VM_LIST" ]; then
+          for vm in "$VM_LIST"; do
             creation_time=$(openstack server show -f value -c created "$vm")
             timestamp=$(date -d "$creation_time" +%s)
             if [ "$timestamp" -lt "$delta" ]; then
-              openstack server delete --verbose "$vm" &> ../vm_artifacts/delete_artifacts
+              openstack server delete --verbose "$vm" &>  ${{ steps.temp-dir.outputs.TEMP }}/.delete_status
             fi
           done
         else
-          echo "No vm to delete" >> ../vm_artifacts/delete_artifacts
+          echo "No vm to delete" >> ${{ steps.temp-dir.outputs.TEMP }}/.delete_status
         fi
     - name: Upload logs to artifacts
       uses: scality/action-artifacts@v3
@@ -93,4 +99,4 @@ runs:
         url: https://artifacts.scality.net
         user: ${{ inputs.ARTIFACTS_USER }}
         password: ${{ inputs.ARTIFACTS_PASSWORD }}
-        source: ../vm_artifacts
+        source:  ${{ steps.temp-dir.outputs.TEMP }}
