@@ -73,7 +73,7 @@ runs:
     - name: Delete old VMs
       shell: bash
       run: |-
-        echo "### Delete Status" >> $GITHUB_STEP_SUMMARY
+        echo "### Cleanup Status" >> $GITHUB_STEP_SUMMARY
         delta=$(date -d "${{ inputs.AGE_HOURS }} hours ago" +%s)
         if [ -n "$VM_LIST" ]; then
           for vm in $VM_LIST; do
@@ -88,7 +88,7 @@ runs:
               fi
             fi
           done
-          echo "All VMs deleted successfully" >> $GITHUB_STEP_SUMMARY
+          echo echo ":rocket: Cleanup of VMs older that ${{ inputs.AGE_HOURS }} hours successful" >> $GITHUB_STEP_SUMMARY
         else
           echo "No vm to delete" >> $GITHUB_STEP_SUMMARY
         fi
