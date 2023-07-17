@@ -66,25 +66,29 @@ runs:
         echo "OS_IDENTITY_API_VERSION=3" >> $GITHUB_ENV
     - name: Get list of VMs
       shell: bash
-      run: echo "VM_LIST=$(openstack server list -f value -c ID)" >> $GITHUB_ENV
+      run: |
+        echo 'VM_LIST<<EOF' >> $GITHUB_ENV
+        openstack server list -f value -c ID >> $GITHUB_ENV
+        echo 'EOF' >> $GITHUB_ENV
     - name: Delete old VMs
       shell: bash
       run: |-
-        set -e
+        echo "### Delete Status" >> $GITHUB_STEP_SUMMARY
         delta=$(date -d "${{ inputs.AGE_HOURS }} hours ago" +%s)
         if [ -n "$VM_LIST" ]; then
           for vm in $VM_LIST; do
             creation_time=$(openstack server show -f value -c created "$vm")
             timestamp=$(date -d "$creation_time" +%s)
             if [ "$timestamp" -lt "$delta" ]; then
-              openstack server delete --verbose "$vm" --wait
+              openstack server delete "$vm" --wait --verbose --wait
               if [ $? -eq 0 ]; then
                 echo "VM '$vm' deletion successful"
-              else:
+              else
                 echo "VM '$vm' deletion failed"
               fi
             fi
           done
+          echo "All VMs deleted successfully" >> $GITHUB_STEP_SUMMARY
         else
-          echo -n "No vm to delete"
+          echo "No vm to delete" >> $GITHUB_STEP_SUMMARY
         fi
