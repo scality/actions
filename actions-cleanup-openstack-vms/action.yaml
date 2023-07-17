@@ -64,13 +64,6 @@ runs:
         echo "OS_PROJECT_DOMAIN_ID=${{ inputs.PROJECT_DOMAIN_ID }}" >> $GITHUB_ENV
         echo "OS_USER_DOMAIN_ID=${{ inputs.USER_DOMAIN_ID }}" >> $GITHUB_ENV
         echo "OS_IDENTITY_API_VERSION=3" >> $GITHUB_ENV
-    - name: create artifacts folder
-      id: temp-dir
-      shell: bash
-      run: |
-        TEMP=$(mktemp -d)
-        echo "Temp directory: ${TEMP}"
-        echo "TEMP=$TEMP" >> $GITHUB_OUTPUT
     - name: Get list of VMs
       shell: bash
       run: echo "VM_LIST=$(openstack server list -f value -c ID)" >> $GITHUB_ENV
@@ -84,18 +77,14 @@ runs:
             creation_time=$(openstack server show -f value -c created "$vm")
             timestamp=$(date -d "$creation_time" +%s)
             if [ "$timestamp" -lt "$delta" ]; then
-              openstack server delete --verbose "$vm" &>  ${{ steps.temp-dir.outputs.TEMP }}/.delete.log
+              openstack server delete --verbose "$vm" --wait
+              if [ $? -eq 0 ]; then
+                echo "VM '$vm' deletion successful"
+              else:
+                echo "VM '$vm' deletion failed"
+              fi
             fi
           done
         else
-          echo "No vm to delete" >> ${{ steps.temp-dir.outputs.TEMP }}/.delete.log
+          echo -n "No vm to delete"
         fi
-    - name: Upload logs to artifacts
-      uses: scality/action-artifacts@v3
-      if: always()
-      with:
-        method: upload
-        url: https://artifacts.scality.net
-        user: ${{ inputs.ARTIFACTS_USER }}
-        password: ${{ inputs.ARTIFACTS_PASSWORD }}
-        source:  ${{ steps.temp-dir.outputs.TEMP }}
