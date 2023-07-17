@@ -27,6 +27,4 @@ jobs:
           PASSWORD: ${{ secrets.<PASSWORD> }}
           PROJECT_NAME: ${{ secrets.<PROJECT_NAME> }}
           PROJECT_ID: ${{ secrets.<PROJECT_ID> }}
-          ARTIFACTS_PASSWORD: ${{ secrets.ARTIFACTS_PASSWORD }}
-          ARTIFACTS_USER: ${{ secrets.ARTIFACTS_USER }}
 ```

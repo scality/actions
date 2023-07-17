@@ -36,10 +36,7 @@ inputs:
   PROJECT_ID:
     description: 'the tenant id of the OpenStack client'
     required: true
-  ARTIFACTS_PASSWORD:
-    required: true
-  ARTIFACTS_USER:
-    required: true
+
 
 runs:
   using: "composite"
