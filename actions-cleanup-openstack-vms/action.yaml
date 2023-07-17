@@ -66,29 +66,29 @@ runs:
         echo "OS_IDENTITY_API_VERSION=3" >> $GITHUB_ENV
     - name: Get list of VMs
       shell: bash
-      run: openstack server list -f value -c ID
-      id: vm_list
+      run: |
+        echo 'VM_LIST<<EOF' >> $GITHUB_ENV
+        openstack server list -f value -c ID >> $GITHUB_ENV
+        echo 'EOF' >> $GITHUB_ENV
     - name: Delete old VMs
       shell: bash
       run: |-
-        set -e
-        mkdir -p ../vm_artifacts
+        echo "### Cleanup Status" >> $GITHUB_STEP_SUMMARY
         delta=$(date -d "${{ inputs.AGE_HOURS }} hours ago" +%s)
-        if [ -z "{{ steps.vm_list.outputs.stdout }}" ]; then
-          for vm in ${{ steps.vm_list.outputs.stdout }}; do
+        if [ -n "$VM_LIST" ]; then
+          for vm in $VM_LIST; do
             creation_time=$(openstack server show -f value -c created "$vm")
             timestamp=$(date -d "$creation_time" +%s)
             if [ "$timestamp" -lt "$delta" ]; then
-              openstack server delete --verbose "$vm" &> ../vm_artifacts/delete_artifacts
+              openstack server delete "$vm" --wait --verbose --wait
+              if [ $? -eq 0 ]; then
+                echo "VM '$vm' deletion successful"
+              else
+                echo "VM '$vm' deletion failed"
+              fi
             fi
           done
+          echo echo ":rocket: Cleanup of VMs older that ${{ inputs.AGE_HOURS }} hours successful" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "No vm to delete" >> $GITHUB_STEP_SUMMARY
         fi
-    - name: Upload logs to artifacts
-      uses: scality/action-artifacts@v3
-      if: always()
-      with:
-        method: upload
-        url: https://artifacts.scality.net
-        user: ${{ inputs.ARTIFACTS_USER }}
-        password: ${{ inputs.ARTIFACTS_PASSWORD }}
-        source: ../vm_artifacts
