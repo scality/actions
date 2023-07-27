@@ -13,7 +13,6 @@ jobs:
     container:
       image: quay.io/skopeo/stable
     steps:
-      - uses: actions/checkout@v3
       - name: Sync images
         uses: scality/actions/registry-image-sync
         with:
