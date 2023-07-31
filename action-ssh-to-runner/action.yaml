@@ -17,27 +17,70 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: "SSH to runner: Package dependencies for tmate"
+    - name: "SSH to runner: Write tmate config file"
       shell: bash
       run: |
-        ${{ inputs.sudo }} && sudo_cmd="sudo" || sudo_cmd=""
-        # mxschmitt/action-tmate does not have a check to use yum/dnf instead of apt.
-        # For now, all dependencies needed by tmate are already installed.
-        test -f /etc/lsb-release || $sudo_cmd ln -s /bin/true /bin/apt-get
-    - name: "SSH to runner: Print usage information"
+        TMATE_CONF=/tmp/tmate.conf
+        echo "TMATE_CONF=$TMATE_CONF" >> $GITHUB_ENV
+        echo "set -g tmate-server-host ${{ inputs.tmate-server-host }}" >> ${TMATE_CONF}
+        echo "set -g tmate-server-port ${{ inputs.tmate-server-port }}" >> ${TMATE_CONF}
+        echo "set -g tmate-server-rsa-fingerprint ${{ inputs.tmate-server-rsa-fingerprint }}" >> ${TMATE_CONF}
+        echo "set -g tmate-server-ed25519-fingerprint ${{ inputs.tmate-server-ed25519-fingerprint }}" >> ${TMATE_CONF}
+        cat ${TMATE_CONF}
+    - name: "SSH to runner: Install tmate"
       shell: bash
       run: |
-        echo "You can connect to this runner using the ssh command printed in the next step."
-        echo "To connect, you need the ssh key used by your GitHub account."
-        echo "You also need to connected to the VPN."
-        echo "The workflow has been paused."
-        echo "To resume, create a file named 'continue' under $GITHUB_WORKSPACE or under / in the runner."
+        TMATE_VERSION=2.4.0
+        ARCH=i386
+        wget https://github.com/tmate-io/tmate/releases/download/${TMATE_VERSION}/tmate-${TMATE_VERSION}-static-linux-${ARCH}.tar.xz -P /tmp
+        tar -xf /tmp/tmate-${TMATE_VERSION}-static-linux-${ARCH}.tar.xz -C /tmp
+        TMATE_BIN=/tmp/tmate-${TMATE_VERSION}-static-linux-${ARCH}/tmate
+        echo "TMATE_BIN=$TMATE_BIN" >> $GITHUB_ENV
+    - name: "SSH to runner: Set up scripts"
+      shell: bash
+      run: |
+        # Adding a system path: https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#adding-a-system-path
+        # does not work now, maybe our runner version is old and does not support this functionality.
+        # echo "${GITHUB_ACTION_PATH}" >> $GITHUB_PATH
+        # Workaround, copy script to /home/runner/.local/bin
+        mkdir -p /home/runner/.local/bin
+        cp ${GITHUB_ACTION_PATH}/disconnect /home/runner/.local/bin/
+        cp ${GITHUB_ACTION_PATH}/continue_workflow /home/runner/.local/bin/
     - name: "SSH to runner: Start tmate"
-      uses: mxschmitt/action-tmate@v3
-      with:
-        sudo: "${{ inputs.sudo }}"
-        limit-access-to-actor: true
-        tmate-server-host: ${{ inputs.tmate-server-host }}
-        tmate-server-port: ${{ inputs.tmate-server-port }}
-        tmate-server-rsa-fingerprint: ${{ inputs.tmate-server-rsa-fingerprint }}
-        tmate-server-ed25519-fingerprint: ${{ inputs.tmate-server-ed25519-fingerprint }}
+      shell: bash
+      run: |
+        TMATE_SOCK=/tmp/tmate.sock
+        echo "TMATE_SOCK=$TMATE_SOCK" >> $GITHUB_ENV
+        nohup ${{ env.TMATE_BIN }} -f ${{ env.TMATE_CONF }} -S ${TMATE_SOCK} -F > /dev/null &
+        echo "$!" > /tmp/tmate.pid
+        # We need to wait a bit for tmate to start.
+        sleep 5
+        ${{ env.TMATE_BIN }} -f ${{ env.TMATE_CONF }} -S ${TMATE_SOCK} wait tmate-ready
+    - name: "SSH to runner: Pause workflow and print connection instructions"
+      shell: bash
+      run: |
+        TMATE_SSH=$(${{ env.TMATE_BIN }} -f ${{ env.TMATE_CONF }} -S ${{ env.TMATE_SOCK }} display -p '#{tmate_ssh}')
+        MESSAGE=$(cat << EOF
+
+        --------------------------------------------------
+        You can connect to this runner using:
+        ${TMATE_SSH}
+        To connect you need:
+        - To  connected to the Scality VPN.
+        - The ssh key associated with your GitHub account.
+        The workflow has been paused.
+        To resume, run the "continue_workflow" command.
+        To disconnect, run the "disconnect" command.
+        --------------------------------------------------
+        EOF
+        )
+        CONTINUE_FILE=${GITHUB_WORKSPACE}/continue
+        while [[ -S ${{ env.TMATE_SOCK }} ]]; do
+          echo "::notice title=SSH::${MESSAGE}"
+          sleep 5
+
+          if [[ -e ${CONTINUE_FILE} ]]; then
+              echo -e "Continue file created, continuing to the next step."
+              exit 0
+          fi
+        done
