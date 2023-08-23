@@ -45,7 +45,7 @@ runs:
         # Workaround, copy script to ${HOME}/.local/bin
         mkdir -p ${HOME}/.local/bin
         cp ${GITHUB_ACTION_PATH}/disconnect ${HOME}/.local/bin/
-        cp ${GITHUB_ACTION_PATH}/continue_workflow ${HOME}/.local/bin/
+        cp ${GITHUB_ACTION_PATH}/resume ${HOME}/.local/bin/
     - name: "SSH to runner: Start tmate"
       shell: bash
       run: |
@@ -69,18 +69,18 @@ runs:
         - To  connected to the Scality VPN.
         - The ssh key associated with your GitHub account.
         The workflow has been paused.
-        To resume, run the "continue_workflow" command.
+        To resume, run the "resume" command.
         To disconnect, run the "disconnect" command.
         --------------------------------------------------
         EOF
         )
-        CONTINUE_FILE=${GITHUB_WORKSPACE}/continue
+        RESUME_FILE=${GITHUB_WORKSPACE}/resume
         while [[ -S ${{ env.TMATE_SOCK }} ]]; do
           echo "::notice title=SSH::${MESSAGE}"
           sleep 5
 
-          if [[ -e ${CONTINUE_FILE} ]]; then
-              echo -e "Continue file created, continuing to the next step."
+          if [[ -e ${RESUME_FILE} ]]; then
+              echo -e "Resume file created, resuming workflow."
               exit 0
           fi
         done
