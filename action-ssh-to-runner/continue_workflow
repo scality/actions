@@ -1,5 +1,0 @@
-#!/bin/bash
-
-set -x -e
-
-touch ${GITHUB_WORKSPACE}/continue
