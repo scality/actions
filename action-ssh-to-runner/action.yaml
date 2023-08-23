@@ -31,7 +31,7 @@ runs:
       shell: bash
       run: |
         TMATE_VERSION=2.4.0
-        ARCH=i386
+        ARCH=amd64
         wget https://github.com/tmate-io/tmate/releases/download/${TMATE_VERSION}/tmate-${TMATE_VERSION}-static-linux-${ARCH}.tar.xz -P /tmp
         tar -xf /tmp/tmate-${TMATE_VERSION}-static-linux-${ARCH}.tar.xz -C /tmp
         TMATE_BIN=/tmp/tmate-${TMATE_VERSION}-static-linux-${ARCH}/tmate
