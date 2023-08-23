@@ -42,10 +42,10 @@ runs:
         # Adding a system path: https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#adding-a-system-path
         # does not work now, maybe our runner version is old and does not support this functionality.
         # echo "${GITHUB_ACTION_PATH}" >> $GITHUB_PATH
-        # Workaround, copy script to /home/runner/.local/bin
-        mkdir -p /home/runner/.local/bin
-        cp ${GITHUB_ACTION_PATH}/disconnect /home/runner/.local/bin/
-        cp ${GITHUB_ACTION_PATH}/continue_workflow /home/runner/.local/bin/
+        # Workaround, copy script to ${HOME}/.local/bin
+        mkdir -p ${HOME}/.local/bin
+        cp ${GITHUB_ACTION_PATH}/disconnect ${HOME}/.local/bin/
+        cp ${GITHUB_ACTION_PATH}/continue_workflow ${HOME}/.local/bin/
     - name: "SSH to runner: Start tmate"
       shell: bash
       run: |
