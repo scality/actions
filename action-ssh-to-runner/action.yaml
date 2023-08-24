@@ -69,8 +69,10 @@ runs:
         - To  connected to the Scality VPN.
         - The ssh key associated with your GitHub account.
         The workflow has been paused.
-        To resume, run the "resume" command.
-        To disconnect, run the "disconnect" command.
+        To resume the workflow, run the "resume" command.
+        To finish debugging session, run the "stop_debugging" command.
+        To disconnect, use Ctrl-D then the following 3 keys sequence '<Enter>~.'
+        To reconnect, ssh then Ctrl-C
         --------------------------------------------------
         EOF
         )
