@@ -1,0 +1,6 @@
+#!/bin/bash
+
+set -x -e
+
+resume
+kill -SIGKILL $(cat /tmp/tmate.pid)
