@@ -44,7 +44,7 @@ runs:
         # echo "${GITHUB_ACTION_PATH}" >> $GITHUB_PATH
         # Workaround, copy script to ${HOME}/.local/bin
         mkdir -p ${HOME}/.local/bin
-        cp ${GITHUB_ACTION_PATH}/disconnect ${HOME}/.local/bin/
+        cp ${GITHUB_ACTION_PATH}/stop_debugging ${HOME}/.local/bin/
         cp ${GITHUB_ACTION_PATH}/resume ${HOME}/.local/bin/
     - name: "SSH to runner: Start tmate"
       shell: bash
