@@ -18,5 +18,6 @@ runs:
           date '+%s' --date='now + <X> minutes' > $GITHUB_WORKSPACE/timeout_date to change the delay."
 
         date '+%s' --date='now + ${{ inputs.completion_delay_m }} minutes' > $GITHUB_WORKSPACE/timeout_date
-        should_wait() { return $(date '+%s') -lt $(cat $GITHUB_WORKSPACE/timeout_date 2>/dev/null) }
-        while [ should_wait() || echo 0 ]; do sleep 5; done
+        should_wait() { return $( [[ $(date '+%s') -lt $(cat $GITHUB_WORKSPACE/timeout_date 2>/dev/null) ]] ) ; }
+        ss | grep -i ssh | wc -l
+        while [ $should_wait || echo 0 ]; do sleep 5; done
