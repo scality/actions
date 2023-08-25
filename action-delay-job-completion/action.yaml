@@ -18,5 +18,12 @@ runs:
           date '+%s' --date='now + <X> minutes' > $GITHUB_WORKSPACE/timeout_date to change the delay."
 
         date '+%s' --date='now + ${{ inputs.completion_delay_m }} minutes' > $GITHUB_WORKSPACE/timeout_date
-        should_wait() { return $(date '+%s') -lt $(cat $GITHUB_WORKSPACE/timeout_date 2>/dev/null) }
-        while [ should_wait() || echo 0 ]; do sleep 5; done
+        should_wait() { return $( [[ $(date '+%s') -lt $(cat $GITHUB_WORKSPACE/timeout_date 2>/dev/null) ]] ) ; }
+        ss | grep -i ssh | wc -l
+        TMATE_VERSION=2.4.0
+        ARCH=amd64
+        TMATE_BIN=/tmp/tmate-${TMATE_VERSION}-static-linux-${ARCH}/tmate
+        TMATE_CONF=/tmp/tmate.conf
+        TMATE_SOCK=/tmp/tmate.sock
+        ${TMATE_BIN} -f ${TMATE_CONF} -S ${TMATE_SOCK} list-sessions
+        while [ $should_wait || echo 0 ]; do sleep 5; done
