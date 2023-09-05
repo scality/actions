@@ -11,6 +11,8 @@ GITHUB_ACTOR=$1
 REF=$2
 VERSION=$3
 NEW_VERSION=$4
+ls -la ./
+
 git checkout -b feature/bump_version_${NEW_VERSION} ${REF}
 
 # update version patch level
