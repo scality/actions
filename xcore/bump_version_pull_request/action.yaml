@@ -69,6 +69,9 @@ runs:
         all_dev_branches=$(git branch --all | grep -E 'origin/development/' | grep -v HEAD | sed 's_remotes/origin/development/__' | sort -u)
         short_version=$(./semver get major ${VERSION}).$(./semver get minor ${VERSION})
 
+        echo "Find upper branches in: ${all_dev_branches}"
+        echo "based on current branch: ${short_version}"
+
         # Identify the upper version branches
         upper_branches=""
         for branch in ${all_dev_branches}; do
