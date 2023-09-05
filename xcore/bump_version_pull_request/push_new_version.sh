@@ -49,7 +49,8 @@ for branch in ${upper_branches}; do
     echo "Create and push waterfall branch for origin/development/${branch}"
     git checkout -B w/${branch}/feature/bump_version_${NEW_VERSION} origin/development/${branch}
 
-    git log --oneline --graph --all --decorate | cat
+    git log --oneline --graph --all --decorate > current_git_graph.txt
+    cat current_git_graph.txt
 
     # We now we can always use 'ours' as this sould only update the version file for the current branch only
     git merge --strategy=ours --no-edit feature/bump_version_${NEW_VERSION}
