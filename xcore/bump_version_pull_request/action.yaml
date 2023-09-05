@@ -46,7 +46,6 @@ runs:
     - name: push changes
       shell: bash
       run: |
-        ls -la ./
         ${GITHUB_ACTION_PATH}/push_new_version.sh \
           ${{ github.actor }} \
           ${{ github.ref }} \
