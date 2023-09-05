@@ -29,7 +29,7 @@ runs:
     - name: install semver
       shell: bash
       run: |
-        curl --fail -LO https://raw.githubusercontent.com/fsaintjacques/semver-tool/3.3.0/src/semver
+        curl -s --fail -LO https://raw.githubusercontent.com/fsaintjacques/semver-tool/3.3.0/src/semver
         chmod +x ./semver
     - name: extract version
       shell: bash
@@ -46,22 +46,12 @@ runs:
     - name: push changes
       shell: bash
       run: |
-        NEW_VERSION=${{ steps.bumped-version.outputs.new_version }}
-        git checkout -b feature/bump_version_${NEW_VERSION} ${{ github.ref }}
+        ${GITHUB_ACTION_PATH}/push_new_version.sh \
+          ${{ github.actor }} \
+          ${{ github.ref }} \
+          ${{ steps.version.outputs.VERSION }} \
+          ${{ steps.bumped-version.outputs.new_version }}
 
-        # update version patch level
-        sed -i "s/VERSION=.*/VERSION=${NEW_VERSION}/" ./VERSION
-
-        git add ./VERSION
-
-        # config git to commit
-        git config --local user.name ${{ github.actor }}
-        git config --local user.email ${{ github.actor }}@scality.com
-
-        # commit changes
-        git commit -m "Bump version to ${NEW_VERSION}"
-
-        git push --set-upstream origin feature/bump_version_${NEW_VERSION}
     - name: Open pr
       id: pull-request
       shell: bash
