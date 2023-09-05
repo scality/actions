@@ -47,7 +47,7 @@ runs:
       shell: bash
       run: |
         ls -la ./
-        xcore/bump_version_pull_request/push_new_version.sh \
+        ${GITHUB_ACTION_PATH}/push_new_version.sh \
           ${{ github.actor }} \
           ${{ github.ref }} \
           ${{ steps.version.outputs.VERSION }} \
