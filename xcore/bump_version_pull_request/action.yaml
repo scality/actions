@@ -46,6 +46,7 @@ runs:
     - name: push changes
       shell: bash
       run: |
+        set -x
         NEW_VERSION=${{ steps.bumped-version.outputs.new_version }}
         git checkout -b feature/bump_version_${NEW_VERSION} ${{ github.ref }}
 
@@ -82,6 +83,10 @@ runs:
         for branch in ${upper_branches}; do
           echo "Create and push waterfall branch for origin/development/${branch}"
           git checkout -B w/${branch}/feature/bump_version_${NEW_VERSION} origin/development/${branch}
+
+          echo "-------------"
+          git status
+          echo "-------------"
 
           # We now we can always use 'ours' as this sould only update the version file for the current branch only
           git merge --strategy=ours feature/bump_version_${NEW_VERSION}
