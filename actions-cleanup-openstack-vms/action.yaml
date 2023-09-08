@@ -77,12 +77,14 @@ runs:
             creation_time=$(openstack server show -f value -c created "$vm")
             timestamp=$(date -d "$creation_time" +%s)
             if [ "$timestamp" -lt "$delta" ]; then
-              openstack server delete "$vm" --wait --verbose --wait
+              set +e
+              openstack server delete "$vm" --wait --verbose
               if [ $? -eq 0 ]; then
                 echo "VM '$vm' deletion successful"
               else
                 echo "VM '$vm' deletion failed"
               fi
+              set -e
             fi
           done
           echo echo ":rocket: Cleanup of VMs older that ${{ inputs.AGE_HOURS }} hours successful" >> $GITHUB_STEP_SUMMARY
