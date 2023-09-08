@@ -16,7 +16,7 @@ runs:
         --------------------------------------------------
         Sleeping for ${{ inputs.completion_delay_m }} minutes.
         To cancel, delete the file '$GITHUB_WORKSPACE/timeout_date' or end the debugging session.
-        To change the delay duraction, update the file '$GITHUB_WORKSPACE/timeout_date' with:
+        To change the delay duration, update the file '$GITHUB_WORKSPACE/timeout_date' with:
           date '+%s' --date='now + <X> minutes' > $GITHUB_WORKSPACE/timeout_date ."
         --------------------------------------------------
         EOF
