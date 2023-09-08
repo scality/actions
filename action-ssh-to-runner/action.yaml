@@ -20,6 +20,18 @@ runs:
     - name: "SSH to runner: Write tmate config file"
       shell: bash
       run: |
+        MESSAGE=$(cat << EOF
+        The input tmate-server-host must be provided.
+        See https://devdocs.scality.net/ci-engines/github-actions/ssh-to-runner/
+        EOF
+        )
+        if [ -z ${{ inputs.tmate-server-host }} ] ; then
+            echo "::notice title="Missing input"::${MESSAGE}"
+            exit 1
+        fi
+    - name: "SSH to runner: Write tmate config file"
+      shell: bash
+      run: |
         TMATE_CONF=/tmp/tmate.conf
         echo "TMATE_CONF=$TMATE_CONF" >> $GITHUB_ENV
         echo "set -g tmate-server-host ${{ inputs.tmate-server-host }}" >> ${TMATE_CONF}
