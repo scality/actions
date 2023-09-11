@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -ex
+set -e
 
 if [[ $# != 4 ]]; then
     echo "usage: $0 <github actor> <github_ref> <version> <version_bumped>"
