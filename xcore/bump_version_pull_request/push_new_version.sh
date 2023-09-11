@@ -49,7 +49,7 @@ for branch in ${upper_branches}; do
     git checkout -B w/${branch}/feature/bump_version_${NEW_VERSION} origin/development/${branch}
 
     # We now we can always use 'ours' as this sould only update the version file for the current branch only
-    git merge --strategy=ours --no-edit origin/feature/bump_version_${NEW_VERSION}
+    git merge --strategy=ours --no-edit feature/bump_version_${NEW_VERSION}
 
     git push -u origin w/${branch}/feature/bump_version_${NEW_VERSION}
 done
