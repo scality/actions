@@ -29,7 +29,7 @@ runs:
     - name: install semver
       shell: bash
       run: |
-        curl --fail -LO https://raw.githubusercontent.com/fsaintjacques/semver-tool/3.3.0/src/semver
+        curl -s --fail -LO https://raw.githubusercontent.com/fsaintjacques/semver-tool/3.3.0/src/semver
         chmod +x ./semver
     - name: extract version
       shell: bash
