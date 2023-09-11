@@ -11,7 +11,7 @@ GITHUB_ACTOR=$1
 REF=$2
 VERSION=$3
 NEW_VERSION=$4
-git fetch --all
+git fetch --all --unshallow
 
 git log --oneline --graph --all --decorate > current_git_graph.txt
 cat current_git_graph.txt
