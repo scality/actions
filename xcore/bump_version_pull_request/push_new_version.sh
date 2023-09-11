@@ -55,4 +55,4 @@ for branch in ${upper_branches}; do
 done
 
 # don't forget to checkout the original branch too
-git checkout -b feature/bump_version_${NEW_VERSION} ${REF}
+git checkout feature/bump_version_${NEW_VERSION}
