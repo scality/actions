@@ -13,9 +13,6 @@ VERSION=$3
 NEW_VERSION=$4
 git fetch --all --unshallow
 
-git log --oneline --graph --all --decorate > current_git_graph.txt
-cat current_git_graph.txt
-
 git checkout -b feature/bump_version_${NEW_VERSION} ${REF}
 
 # update version patch level
