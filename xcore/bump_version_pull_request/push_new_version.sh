@@ -28,7 +28,6 @@ git config --local user.email ${GITHUB_ACTOR}@scality.com
 git commit -m "Bump version to ${NEW_VERSION}"
 
 # fetch all branches
-git fetch --all
 all_dev_branches=$(git branch --all | grep -E 'origin/development/' | grep -v HEAD | sed 's_remotes/origin/development/__' | sort -u)
 short_version=$(./semver get major ${VERSION}).$(./semver get minor  ${VERSION})
 
