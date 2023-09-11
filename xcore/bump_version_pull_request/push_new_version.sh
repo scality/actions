@@ -44,14 +44,16 @@ for branch in ${all_dev_branches}; do
 done
 echo "Prepare waterfall branches for: ${upper_branches}"
 
+base_branch="feature/bump_version_${NEW_VERSION}"
 for branch in ${upper_branches}; do
     echo "Create and push waterfall branch for origin/development/${branch}"
     git checkout -B w/${branch}/feature/bump_version_${NEW_VERSION} origin/development/${branch}
 
     # We now we can always use 'ours' as this sould only update the version file for the current branch only
-    git merge --strategy=ours --no-edit feature/bump_version_${NEW_VERSION}
+    git merge --strategy=ours --no-edit ${base_branch}
 
     git push -u origin w/${branch}/feature/bump_version_${NEW_VERSION}
+    base_branch="w/${branch}/feature/bump_version_${NEW_VERSION}"
 done
 
 # don't forget to checkout the original branch too
