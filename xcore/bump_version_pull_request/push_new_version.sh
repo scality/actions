@@ -28,7 +28,7 @@ git config --local user.email ${GITHUB_ACTOR}@scality.com
 git commit -m "Bump version to ${NEW_VERSION}"
 
 # fetch all branches
-all_dev_branches=$(git branch --all | grep -E 'origin/development/' | grep -v HEAD | sed 's_remotes/origin/development/__' | sort -u)
+all_dev_branches=$(git branch --all | grep -E 'origin/development/' | grep -v HEAD | sed 's_remotes/origin/development/__' | sort -u | tr -s '\n' ' ')
 short_version=$(./semver get major ${VERSION}).$(./semver get minor  ${VERSION})
 
 echo "Find upper branches in: ${all_dev_branches}"
@@ -39,12 +39,13 @@ upper_branches=""
 for branch in ${all_dev_branches}; do
     is_upper=$(./semver compare "${branch}.0" "${short_version}.0")
     if [[ "${is_upper}" -gt 0 ]]; then
-    upper_branches="${upper_branches}${branch} "
+        upper_branches="${upper_branches}${branch} "
     fi
 done
-echo "Prepare waterfall branches for: ${upper_branches}"
 
+echo "Prepare waterfall branches for: ${upper_branches}"
 base_branch="feature/bump_version_${NEW_VERSION}"
+
 for branch in ${upper_branches}; do
     echo "Create and push waterfall branch for origin/development/${branch}"
     git checkout -B w/${branch}/feature/bump_version_${NEW_VERSION} origin/development/${branch}
