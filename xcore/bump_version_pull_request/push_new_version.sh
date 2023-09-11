@@ -56,3 +56,4 @@ done
 
 # don't forget to checkout the original branch too
 git checkout feature/bump_version_${NEW_VERSION}
+git push --set-upstream origin feature/bump_version_${NEW_VERSION}
