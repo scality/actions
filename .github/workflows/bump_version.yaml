@@ -24,7 +24,8 @@ jobs:
           if [[ "${res}" != "" ]]; then
             git branch -D ${BUMP_BRANCH}
             git push --delete origin ${BUMP_BRANCH}
-          if
+          fi
+
       - uses: ./xcore/bump_version_pull_request
         id: pull-request
       - name: check version is bumped
