@@ -1,4 +1,4 @@
-name: 'Test upload Dockerfile'
+name: 'Test Bump version'
 
 on:
   push
@@ -13,6 +13,16 @@ jobs:
       - name: create fake version file
         run: |
           echo "VERSION=1.2.3" > VERSION
+      - name: Check the feature branch does not exists
+        env:
+          BUMP_BRANCH: feature/bump_version_1.2.4
+        run: |
+          # disable error as grep return 1 if nothing is found
+          res=$(git branch --list --all | grep ${BUMP_BRANCH})
+          if [[ "${res}" != "" ]]; then
+            git branch -D ${BUMP_BRANCH}
+            git push --delete origin ${BUMP_BRANCH}
+          if
       - uses: ./xcore/bump_version_pull_request
         id: pull-request
       - name: check version is bumped
