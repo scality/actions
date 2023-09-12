@@ -18,7 +18,9 @@ jobs:
           BUMP_BRANCH: feature/bump_version_1.2.4
         run: |
           # disable error as grep return 1 if nothing is found
+          set +e
           res=$(git branch --list --all | grep ${BUMP_BRANCH})
+          set -e
           if [[ "${res}" != "" ]]; then
             git branch -D ${BUMP_BRANCH}
             git push --delete origin ${BUMP_BRANCH}
