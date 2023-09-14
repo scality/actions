@@ -2,9 +2,6 @@ name: "SSH to runner"
 description: 'Open an SSH connection to a runner'
 
 inputs:
-  sudo:
-    description: Sudo is needed for some operations
-    default: false
   tmate-server-host:
     description: IP of tmate server
   tmate-server-port:
