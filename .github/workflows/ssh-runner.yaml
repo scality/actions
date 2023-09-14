@@ -21,7 +21,6 @@ jobs:
     - name: ssh
       uses: ./action-ssh-to-runner
       with:
-        sudo: true
         tmate-server-host: "${{ secrets.TMATE_SERVER_HOST }}"
         tmate-server-port: "${{ secrets.TMATE_SERVER_PORT }}"
         tmate-server-rsa-fingerprint: "${{ secrets.TMATE_SERVER_RSA_FINGERPRINT }}"
