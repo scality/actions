@@ -7,12 +7,16 @@ inputs:
     default: false
   tmate-server-host:
     description: IP of tmate server
+    required: true
   tmate-server-port:
     description: Port of tmate server
+    required: true
   tmate-server-rsa-fingerprint:
     description: Tmate server rsa key fingerprint
+    required: true
   tmate-server-ed25519-fingerprint:
     description: Tmate server ed25510 key fingerprint
+    required: true
 
 runs:
   using: "composite"
