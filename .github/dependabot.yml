@@ -1,9 +1,9 @@
 ---
 version: 2
-permissions:
-  pull-requests: read
 updates:
   - package-ecosystem: github-actions
+    permissions:
+      pull-requests: read
     directory: "/"
     schedule:
       interval: weekly
