@@ -9,21 +9,42 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: "Debug: Delay job completion"
+    - name: "SSH to runner: Pause workflow and print connection instructions"
       shell: bash
       run: |
         MESSAGE=$(cat << EOF
         --------------------------------------------------
         Sleeping for ${{ inputs.completion_delay_m }} minutes.
-        To cancel, delete the file '$GITHUB_WORKSPACE/timeout_date' or end the debugging session.
+        To cancel, delete the file '$GITHUB_WORKSPACE/timeout_date'
+        or end the debugging session with the command 'stop_debugging'.
         To change the delay duration, update the file '$GITHUB_WORKSPACE/timeout_date' with:
           date '+%s' --date='now + <X> minutes' > $GITHUB_WORKSPACE/timeout_date ."
         --------------------------------------------------
         EOF
         )
         echo "::notice title=Delay workflow completion::${MESSAGE}"
+        echo ${MESSAGE} >> $GITHUB_STEP_SUMMARY
+
+    - name: "Debug: Delay job completion"
+      shell: bash
+      run: |
 
         date '+%s' --date='now + ${{ inputs.completion_delay_m }} minutes' > $GITHUB_WORKSPACE/timeout_date
+        
+        LOGIN_MSG=$(cat << EOF
+        --------------------------------------------------
+        Job completion delayed for for $((($(cat $GITHUB_WORKSPACE/timeout_date) - $(date '+%s'))/60)) minutes.
+        
+        To cancel, delete the file '$GITHUB_WORKSPACE/timeout_date'
+        or end the debugging session with the command 'stop_debugging'.
+        To change the delay duration, update the file '$GITHUB_WORKSPACE/timeout_date' with:
+          date '+%s' --date='now + <X> minutes' > $GITHUB_WORKSPACE/timeout_date ."
+        --------------------------------------------------
+        EOF
+        )
+        
+        echo ${LOGIN_MSG} > ~/.login_msg
+
         while [ $(date '+%s') -lt $(cat $GITHUB_WORKSPACE/timeout_date 2>/dev/null || echo 0) ] && [[ -f /tmp/tmate.pid ]] && ps --pid $(cat /tmp/tmate.pid) &>/dev/null ;
         do
           sleep 5;
