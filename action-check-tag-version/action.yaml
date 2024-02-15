@@ -29,7 +29,7 @@ runs:
       shell: bash
       run: |
         BRANCH_VERSION=$(git branch --show-current | cut -d'/' -f 2)
-        TAG_VERSION=$(echo ${{ inputs.tag }} | cut -d'.' -f 1-2)
+        TAG_VERSION=$(echo ${{ inputs.tag }} | cut -d'.' -f 1-3)
         if [[ "$BRANCH_VERSION" != "$TAG_VERSION" ]]; then
           echo "Cannot release tag ${{ inputs.tag }} on branch $(git branch --show-current)" >&2
           exit 1
