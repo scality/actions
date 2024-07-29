@@ -2,12 +2,19 @@
 version: 2
 updates:
   - package-ecosystem: github-actions
-    directory: "/"
+    directories:
+      - /
+      - action*
+      - archive-cores
+      - upload_final_status
+      - xcore
     schedule:
       interval: weekly
-    commit-message:
-      prefix: github-actions
-      include: scope
     labels:
       - github-actions
       - dependencies
+  - package-ecosystem: pip
+    directories:
+      - actions-cleanup-openstack-vms
+    schedule:
+      interval: weekly

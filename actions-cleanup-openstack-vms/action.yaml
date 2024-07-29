@@ -6,10 +6,6 @@ inputs:
     description: 'the maximum age of the VM in hours; an older VM will be deleted'
     default: 6
     required: false
-  CLOUD:
-    description: the cloud provider
-    required: false
-    default: 'openstack'
   PASSWORD:
     description: 'the password of the OpenStack client'
     required: true
@@ -41,15 +37,7 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Install requirements
-      shell: bash
-      run: |-
-        set -e
-        sudo yum install -y epel-release
-        sudo yum install -y https://rdoproject.org/repos/rdo-release.rpm
-        sudo yum install -y python-openstackclient
-      if: inputs.CLOUD == 'openstack'
-    - name: Authenticate
+    - name: Setup environment
       shell: bash
       run: |-
         echo "OS_PASSWORD=${{ inputs.PASSWORD }}" >> $GITHUB_ENV
@@ -61,6 +49,14 @@ runs:
         echo "OS_PROJECT_DOMAIN_ID=${{ inputs.PROJECT_DOMAIN_ID }}" >> $GITHUB_ENV
         echo "OS_USER_DOMAIN_ID=${{ inputs.USER_DOMAIN_ID }}" >> $GITHUB_ENV
         echo "OS_IDENTITY_API_VERSION=3" >> $GITHUB_ENV
+    - name: Setup python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+        cache: 'pip'
+    - name: Install dependencies
+      shell: bash
+      run: pip install -r ${GITHUB_ACTION_PATH}/requirements.txt
     - name: Get list of VMs
       shell: bash
       run: |
