@@ -41,6 +41,13 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Setup python
+      uses: actions/setup-python@v5
+    - name: Install openstack client
+      shell: bash
+      run: |-
+        pip install python-openstackclient
+
     - name: Install requirements
       shell: bash
       run: |-
