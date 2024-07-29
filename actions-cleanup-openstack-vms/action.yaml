@@ -37,13 +37,7 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Setup python
-      uses: actions/setup-python@v5
-    - name: Install openstack client
-      shell: bash
-      run: |-
-        pip install python-openstackclient
-    - name: Authenticate
+    - name: Setup environment
       shell: bash
       run: |-
         echo "OS_PASSWORD=${{ inputs.PASSWORD }}" >> $GITHUB_ENV
@@ -56,6 +50,12 @@ runs:
         echo "OS_USER_DOMAIN_ID=${{ inputs.USER_DOMAIN_ID }}" >> $GITHUB_ENV
         echo "OS_IDENTITY_API_VERSION=3" >> $GITHUB_ENV
         echo "ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true" >> $GITHUB_ENV
+    - name: Setup python
+      uses: actions/setup-python@v4
+    - name: Install openstack client
+      shell: bash
+      run: |-
+        pip install python-openstackclient
     - name: Get list of VMs
       shell: bash
       run: |
