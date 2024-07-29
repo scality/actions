@@ -9,6 +9,8 @@ jobs:
       - centos7
       - large
       - gcloud
+    env:
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
     steps:
       - name: Checkout
         uses: actions/checkout@v2
