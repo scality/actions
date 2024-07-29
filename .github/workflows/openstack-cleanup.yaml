@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Cleanup OpenStack VMs
-        uses: scality/actions/actions-cleanup-openstack-vms@action-path-requirements
+        uses: ./actions-cleanup-openstack-vms
         with:
           PASSWORD: ${{ secrets.OPENSTACK_PASSWORD }}
           AUTH_URL: ${{ secrets.OPENSTACK_AUTH_URL }}
