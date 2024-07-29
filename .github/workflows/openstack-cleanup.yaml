@@ -4,27 +4,7 @@ on:
       - main
 
 jobs:
-  cleanup-self-hosted:
-    runs-on:
-      - centos7
-      - large
-      - gcloud
-    env:
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-      - name: Cleanup OpenStack VMs
-        uses: ./actions-cleanup-openstack-vms
-        with:
-          PASSWORD: ${{ secrets.OPENSTACK_PASSWORD }}
-          AUTH_URL: ${{ secrets.OPENSTACK_AUTH_URL }}
-          USERNAME: ${{ secrets.OPENSTACK_USERNAME }}
-          REGION: ${{ secrets.OPENSTACK_REGION }}
-          PROJECT_NAME: ${{ secrets.OPENSTACK_PROJECT_NAME }}
-          PROJECT_ID: ${{ secrets.OPENSTACK_PROJECT_ID }}
-
-  cleanup-github-hosted:
+  cleanup:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
