@@ -1,3 +1,6 @@
+---
+name: openstack-cleanup
+
 on:
   pull_request:
     branches:
