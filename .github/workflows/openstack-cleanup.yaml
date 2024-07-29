@@ -13,7 +13,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Cleanup OpenStack VMs
-        uses: ./actions-cleanup-openstack-vms
+        uses: scality/actions/actions-cleanup-openstack-vms@${{ github.ref_name }}
         with:
           PASSWORD: ${{ secrets.OPENSTACK_PASSWORD }}
           AUTH_URL: ${{ secrets.OPENSTACK_AUTH_URL }}
