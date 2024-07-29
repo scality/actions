@@ -10,8 +10,6 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
       - name: Cleanup OpenStack VMs
         uses: scality/actions/actions-cleanup-openstack-vms@action-path-requirements
         with:
