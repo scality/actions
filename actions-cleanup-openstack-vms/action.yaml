@@ -53,7 +53,13 @@ runs:
       uses: actions/setup-python@v5
       with:
         python-version: '3.x'
-        cache: 'pip'
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-cleanup-openstack-${{ hashFiles('${{ github.action_path }}/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-cleanup-openstack-
     - name: Install dependencies
       shell: bash
       run: pip install -r ${GITHUB_ACTION_PATH}/requirements.txt
