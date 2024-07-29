@@ -2,7 +2,12 @@
 version: 2
 updates:
   - package-ecosystem: github-actions
-    directory: "/"
+    directories:
+      - /
+      - action*
+      - archive-cores
+      - upload_final_status
+      - xcore
     schedule:
       interval: weekly
     labels:
