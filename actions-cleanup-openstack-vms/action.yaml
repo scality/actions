@@ -57,7 +57,7 @@ runs:
       uses: actions/cache@v3
       with:
         path: ~/.cache/pip
-        key: ${{ runner.os }}-cleanup-openstack-${{ hashFiles(format('{0}/requirements.txt', github.action_path)) }}
+        key: ${{ runner.os }}-cleanup-openstack-${{ github.action_ref }}
         restore-keys: |
           ${{ runner.os }}-cleanup-openstack-
     - name: Install dependencies
