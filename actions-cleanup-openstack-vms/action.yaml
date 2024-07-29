@@ -47,15 +47,6 @@ runs:
       shell: bash
       run: |-
         pip install python-openstackclient
-
-    - name: Install requirements
-      shell: bash
-      run: |-
-        set -e
-        sudo yum install -y epel-release
-        sudo yum install -y https://rdoproject.org/repos/rdo-release.rpm
-        sudo yum install -y python-openstackclient
-      if: inputs.CLOUD == 'openstack'
     - name: Authenticate
       shell: bash
       run: |-
