@@ -31,7 +31,7 @@ jobs:
             branch: 'development/7.4'
             workflows: 'baseline.yaml,end-to-end.yaml -f postmerge-vm=false,packaging-tests.yaml'
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         if: github.event.schedule == matrix.jobs.cron
       - name: 'run crons'
         if: github.event.schedule == matrix.jobs.cron
