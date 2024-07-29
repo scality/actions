@@ -5,9 +5,11 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
-    commit-message:
-      prefix: github-actions
-      include: scope
     labels:
       - github-actions
       - dependencies
+  - package-ecosystem: pip
+    directories:
+      - actions-cleanup-openstack-vms
+    schedule:
+      interval: weekly
