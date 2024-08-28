@@ -11,7 +11,6 @@ jobs:
       matrix:
         name:
         - ubuntu-latest
-        - centos7
         - redhat8
         - rocky8
     runs-on: ${{ matrix.name }}
