@@ -1,1 +1,1 @@
-python-openstackclient==6.6.1
+python-openstackclient==7.1.3
