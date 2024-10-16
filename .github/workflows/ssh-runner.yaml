@@ -13,6 +13,7 @@ jobs:
         - ubuntu-latest
         - redhat8
         - rocky8
+        - aws
     runs-on: ${{ matrix.name }}
     steps:
     - name: Checkout
