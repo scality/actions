@@ -7,14 +7,14 @@ jobs:
   ssh:
     name: ssh ${{ matrix.name }}
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         name:
         - ubuntu-latest
         - redhat8
         - rocky8
         - aws
-        - ['self-hosted', 'ubuntu', 'focal', 'large', 'gcloud']
+        - ['self-hosted', 'ubuntu', 'jammy', 'large', 'gcloud']
     runs-on: ${{ matrix.name }}
     steps:
     - name: Checkout
