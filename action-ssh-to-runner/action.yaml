@@ -14,6 +14,10 @@ inputs:
   tmate-server-ed25519-fingerprint:
     description: Tmate server ed25510 key fingerprint
     required: true
+  detached:
+    description: 'Run tmate in detached mode ("true" or "false", default: "false").'
+    required: false
+    default: "false"
 
 runs:
   using: "composite"
@@ -48,9 +52,10 @@ runs:
         echo "TMATE_SOCK=$TMATE_SOCK" >> $GITHUB_ENV
         nohup tmate -f ${{ env.TMATE_CONF }} -S ${TMATE_SOCK} -F > /dev/null &
         echo "$!" > /tmp/tmate.pid
-        # We need to wait a bit for tmate to start.
-        sleep 5
-        tmate -f ${{ env.TMATE_CONF }} -S ${TMATE_SOCK} wait tmate-ready
+        if [[ "${{ inputs.detached }}" == "false" ]]; then
+          sleep 5
+          tmate -f $TMATE_CONF -S ${TMATE_SOCK} wait tmate-ready
+        fi
     - name: "SSH to runner: Pause workflow and print connection instructions"
       shell: bash
       run: |
@@ -71,6 +76,15 @@ runs:
         --------------------------------------------------
         EOF
         )
+
+        if [[ "${{ inputs.detached }}" == "true" ]]; then
+          echo "::notice title=SSH::Tmate started in detached mode. Connect using SSH: ${TMATE_SSH}"
+          echo "To connect you need:"
+          echo "- To be connected to the Scality VPN."
+          echo "- The SSH key associated with your GitHub account."
+          exit 0
+        fi
+
         RESUME_FILE=${GITHUB_WORKSPACE}/resume
         while [[ -S ${{ env.TMATE_SOCK }} ]]; do
           echo "::notice title=SSH::${MESSAGE}"
