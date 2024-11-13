@@ -45,7 +45,7 @@ runs:
       run: |
         echo -n "SUCCESSFUL" > ${{ steps.temp-dir.outputs.TEMP }}/.final_status
     - name: upload file to artifacts
-      uses: scality/action-artifacts@v3
+      uses: scality/action-artifacts@v4
       id: artifacts
       with:
         method: upload
