@@ -1,21 +1,25 @@
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: Type of runner
+        required: false
+        type: choice
+        default: ubuntu-latest
+        options:
+          - ubuntu-latest
+          - redhat8
+          - rocky8
+          - aws
+          - gcloud
 
 name: ssh to runner
 
 jobs:
   ssh:
-    name: ssh ${{ matrix.name }}
     strategy:
       fail-fast: true
-      matrix:
-        name:
-        - ubuntu-latest
-        - redhat8
-        - rocky8
-        - aws
-        - ['self-hosted', 'ubuntu', 'focal', 'large', 'gcloud']
-    runs-on: ${{ matrix.name }}
+    runs-on: ${{ inputs.runner }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
