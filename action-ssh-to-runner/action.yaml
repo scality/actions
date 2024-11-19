@@ -31,6 +31,7 @@ runs:
         echo "set -g tmate-server-port ${{ inputs.tmate-server-port }}" >> ${TMATE_CONF}
         echo "set -g tmate-server-rsa-fingerprint ${{ inputs.tmate-server-rsa-fingerprint }}" >> ${TMATE_CONF}
         echo "set -g tmate-server-ed25519-fingerprint ${{ inputs.tmate-server-ed25519-fingerprint }}" >> ${TMATE_CONF}
+        echo "set-environment -g PATH $PATH" >> ${TMATE_CONF}
         cat ${TMATE_CONF}
     - name: "SSH to runner: Install tmate"
       shell: bash
