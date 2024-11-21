@@ -1,0 +1,9 @@
+name: scality-infra-ring
+description: Cloud infrastructure for deploying RING
+runtime: nodejs
+
+config:
+  cloud:
+    type: string
+    description: The cloud provider to use
+    default: openstack

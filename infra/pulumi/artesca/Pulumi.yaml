@@ -1,0 +1,13 @@
+name: scality-infra-artesca
+description: Cloud infrastructure for deploying ARTESCA
+runtime: nodejs
+
+config:
+  cloud:
+    type: string
+    description: The cloud provider to use
+    default: openstack
+  nodes-count:
+    type: integer
+    description: The number of nodes to spawn (not counting bastion)
+    default: 1

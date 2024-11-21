@@ -1,0 +1,16 @@
+name: 'example'
+description: An example action
+
+inputs:
+  in:
+    description: An arbitrary input string
+    type: string
+    required: true
+
+outputs:
+  out:
+    description: A fixed output
+
+runs:
+  using: 'node16'
+  main: './dist/index.js'

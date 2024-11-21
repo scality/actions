@@ -1,0 +1,33 @@
+name: test-actions
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-infra-example:
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v3
+    - uses: ./infra/example
+      id: custom-action
+      with:
+        in: my-input
+    - run: echo "Success!"
+      shell: bash
+      if: steps.custom-action.outputs.out == 'example-output'
+    - run: echo "Failure" && exit 1
+      shell: bash
+      if: steps.custom-action.outputs.out != 'example-output'
+
+  test-infra-setup:
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v3
+    - uses: ./infra/setup
+      id: infra-setup
+      with:
+        cloud: openstack
+        stack-name: test
+    - shell: bash
+      run: ls ${{ steps.infra-setup.outputs.workdir }}
