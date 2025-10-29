@@ -20,6 +20,7 @@ if [[ $ID == "ubuntu" || $ID == "debian" ]]; then
 elif [[ $ID == "rocky" || $ID == "centos" || $ID == "rhel" ]]; then
     if [[ ${VERSION_ID:0:1} -ge 8 ]]; then
         sudo dnf install -y "https://dl.fedoraproject.org/pub/epel/epel-release-latest-${VERSION_ID:0:1}.noarch.rpm"
+        sudo gunzip /etc/yum.repos.d/epel.repo.gz || true
         sudo dnf install --enablerepo=epel -y tmate
     else
         sudo yum install -y epel-release
