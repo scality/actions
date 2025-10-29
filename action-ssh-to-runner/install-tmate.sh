@@ -20,10 +20,10 @@ if [[ $ID == "ubuntu" || $ID == "debian" ]]; then
 elif [[ $ID == "rocky" || $ID == "centos" || $ID == "rhel" ]]; then
     if [[ ${VERSION_ID:0:1} -ge 8 ]]; then
         sudo dnf install -y "https://dl.fedoraproject.org/pub/epel/epel-release-latest-${VERSION_ID:0:1}.noarch.rpm"
-        sudo dnf install -y tmate
+        sudo dnf install --enablerepo=epel -y tmate
     else
         sudo yum install -y epel-release
-        sudo yum install -y tmate
+        sudo yum install --enablerepo=epel -y tmate
     fi
 else
   echo "Unsupported OS"
