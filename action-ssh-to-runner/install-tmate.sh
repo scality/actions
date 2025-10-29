@@ -24,6 +24,7 @@ elif [[ $ID == "rocky" || $ID == "centos" || $ID == "rhel" ]]; then
         sudo dnf install --enablerepo=epel -y tmate
     else
         sudo yum install -y epel-release
+        sudo gunzip /etc/yum.repos.d/epel.repo.gz || true
         sudo yum install --enablerepo=epel -y tmate
     fi
 else
