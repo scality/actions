@@ -1,0 +1,138 @@
+name: 'Smart Nightly Trigger'
+description: 'Intelligently decides whether to trigger nightly workflows based on commits and schedule'
+
+# Required permissions for the calling workflow:
+#   contents: read      # For checking out the repository and reading git history
+#   actions: read       # For querying workflow run status via GitHub API
+#
+# Note: The access_token input must be a Personal Access Token (PAT) or GitHub App token
+#       with 'repo' and 'workflow' scopes to trigger workflows.
+#       The default GITHUB_TOKEN cannot trigger workflows due to GitHub security restrictions.
+
+inputs:
+  branch:
+    description: 'Branch to check and trigger workflow for (defaults to repository default branch)'
+    required: false
+  workflow:
+    description: 'Workflow to trigger (e.g., nightly.yaml)'
+    required: true
+    default: 'nightly.yaml'
+  access_token:
+    description: 'Access token for triggering workflows (required)'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Set target branch
+      id: set-branch
+      shell: bash
+      run: |
+        BRANCH="${{ inputs.branch || github.event.repository.default_branch }}"
+        echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+        echo "🎯 Target branch: $BRANCH"
+
+    - name: Checkout repository
+      uses: actions/checkout@v5
+      shell: bash
+      with:
+        ref: ${{ steps.set-branch.outputs.branch }}
+        fetch-depth: 1
+
+    - name: Get last commit timestamp
+      id: check-commits
+      shell: bash
+      run: |
+        # Get the timestamp of the last commit
+        last_commit_time=$(git log -1 --format=%ct)
+        echo "last_commit_time=$last_commit_time" >> $GITHUB_OUTPUT
+        echo "📊 Last commit timestamp: $last_commit_time"
+
+    - name: Check latest workflow run status
+      id: check-status
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        BRANCH: ${{ steps.set-branch.outputs.branch }}
+      run: |
+        # Get the latest workflow run for this branch
+        latest_run=$(gh api \
+          -H "Accept: application/vnd.github+json" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          "/repos/${{ github.repository }}/actions/workflows/${{ inputs.workflow }}/runs?branch=${BRANCH}&per_page=1" \
+          --jq '.workflow_runs[0]')
+
+        if [ -z "$latest_run" ] || [ "$latest_run" = "null" ]; then
+          echo "❌ No previous workflow runs found"
+          echo "status=not_found" >> $GITHUB_OUTPUT
+          echo "days_since_last_run=999" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        # Extract status and conclusion
+        status=$(echo "$latest_run" | jq -r '.status')
+        conclusion=$(echo "$latest_run" | jq -r '.conclusion')
+        run_id=$(echo "$latest_run" | jq -r '.id')
+        created_at=$(echo "$latest_run" | jq -r '.created_at')
+
+        echo "status=$status" >> $GITHUB_OUTPUT
+        echo "conclusion=$conclusion" >> $GITHUB_OUTPUT
+        echo "run_id=$run_id" >> $GITHUB_OUTPUT
+
+        # Calculate days since last run
+        if [ -n "$created_at" ] && [ "$created_at" != "null" ]; then
+          last_run_epoch=$(date -d "$created_at" +%s)
+          current_epoch=$(date +%s)
+          days_since=$((($current_epoch - $last_run_epoch) / 86400))
+          echo "days_since_last_run=$days_since" >> $GITHUB_OUTPUT
+          echo "📅 Last run was $days_since days ago"
+        else
+          echo "days_since_last_run=999" >> $GITHUB_OUTPUT
+        fi
+
+        echo "🔍 Latest workflow run #$run_id: status=$status, conclusion=$conclusion"
+
+    - name: Decide whether to trigger workflow
+      id: decide
+      shell: bash
+      env:
+        LAST_COMMIT_TIME: ${{ steps.check-commits.outputs.last_commit_time }}
+        STATUS: ${{ steps.check-status.outputs.status }}
+        DAYS_SINCE: ${{ steps.check-status.outputs.days_since_last_run }}
+      run: |
+        # Run the decision script
+        ${{ github.action_path }}/decide-trigger.sh
+
+        # Display results for debugging
+        echo "Decision results:"
+        cat result.txt
+
+        # Copy results to GITHUB_OUTPUT
+        cat result.txt >> $GITHUB_OUTPUT
+
+    - name: Trigger workflow
+      if: steps.decide.outputs.trigger == 'true'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.access_token }}
+        BRANCH: ${{ steps.set-branch.outputs.branch }}
+      run: |
+        echo "🎯 Triggering workflow: ${{ inputs.workflow }} for ${BRANCH}"
+        echo "📋 Reason: ${{ steps.decide.outputs.reason }}"
+        gh workflow run "${{ inputs.workflow }}" --ref="${BRANCH}"
+
+    - name: Log decision
+      shell: bash
+      env:
+        BRANCH: ${{ steps.set-branch.outputs.branch }}
+      run: |
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "📊 Smart Nightly Trigger Decision Summary"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "Branch: ${BRANCH}"
+        echo "Trigger: ${{ steps.decide.outputs.trigger }}"
+        echo "Reason: ${{ steps.decide.outputs.reason }}"
+        echo "Last commit time: ${{ steps.check-commits.outputs.last_commit_time }}"
+        echo "Days since last run: ${{ steps.check-status.outputs.days_since_last_run }}"
+        echo "Last status: ${{ steps.check-status.outputs.conclusion }}"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
