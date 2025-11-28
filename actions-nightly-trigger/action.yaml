@@ -34,7 +34,6 @@ runs:
 
     - name: Checkout repository
       uses: actions/checkout@v5
-      shell: bash
       with:
         ref: ${{ steps.set-branch.outputs.branch }}
         fetch-depth: 1
