@@ -27,3 +27,19 @@ jobs:
         if: always()
         run: |
           echo "Decision logic tests completed"
+
+  test-action-syntax:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Test action syntax by running it
+        uses: ./actions-nightly-trigger
+        with:
+          branch: ${{ github.head_ref || github.ref_name }}
+          workflow: test-nightly-trigger.yaml
+          access_token: ${{ secrets.GITHUB_TOKEN }}
