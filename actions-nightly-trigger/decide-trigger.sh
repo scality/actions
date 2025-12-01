@@ -1,6 +1,5 @@
 #!/bin/bash
 # Decision logic for smart nightly trigger
-# Returns: 0 if should trigger, 1 if should skip
 # Outputs: writes trigger decision to result.txt
 
 set -e
@@ -42,10 +41,3 @@ cat > result.txt <<EOF
 trigger=$trigger
 reason=$reason
 EOF
-
-# Return exit code based on trigger decision
-if [ "$trigger" = "true" ]; then
-    exit 0  # Should trigger
-else
-    exit 1  # Should skip
-fi
