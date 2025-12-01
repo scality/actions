@@ -20,6 +20,24 @@ inputs:
   access_token:
     description: 'Access token for triggering workflows (required)'
     required: true
+  run-workflow:
+    description: 'Whether to actually run the workflow or only make decision (default: true)'
+    required: false
+    default: 'true'
+
+outputs:
+  trigger:
+    description: 'Whether the workflow should be triggered (true/false)'
+    value: ${{ steps.decide.outputs.trigger }}
+  reason:
+    description: 'Reason for the trigger decision'
+    value: ${{ steps.decide.outputs.reason }}
+  last_commit_time:
+    description: 'Timestamp of the last commit'
+    value: ${{ steps.check-commits.outputs.last_commit_time }}
+  days_since_last_run:
+    description: 'Days since last workflow run'
+    value: ${{ steps.check-status.outputs.days_since_last_run }}
 
 runs:
   using: composite
@@ -110,7 +128,7 @@ runs:
         cat result.txt >> $GITHUB_OUTPUT
 
     - name: Trigger workflow
-      if: steps.decide.outputs.trigger == 'true'
+      if: steps.decide.outputs.trigger == 'true' && inputs.run-workflow == 'true'
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.access_token }}
