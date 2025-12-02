@@ -27,3 +27,42 @@ jobs:
         if: always()
         run: |
           echo "Decision logic tests completed"
+
+  test-action-syntax:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Test action syntax by running it
+        id: test-action
+        uses: ./actions-nightly-trigger
+        with:
+          branch: ${{ github.head_ref || github.ref_name }}
+          workflow: test-nightly-trigger.yaml
+          access_token: ${{ secrets.GITHUB_TOKEN }}
+          run-workflow: false
+
+      - name: Verify decision outputs
+        run: |
+          echo "Decision results:"
+          echo "  Trigger: ${{ steps.test-action.outputs.trigger }}"
+          echo "  Reason: ${{ steps.test-action.outputs.reason }}"
+          echo "  Last commit time: ${{ steps.test-action.outputs.last_commit_time }}"
+          echo "  Days since last run: ${{ steps.test-action.outputs.days_since_last_run }}"
+
+          # Verify outputs are not empty
+          if [ -z "${{ steps.test-action.outputs.trigger }}" ]; then
+            echo "❌ ERROR: trigger output is empty"
+            exit 1
+          fi
+
+          if [ -z "${{ steps.test-action.outputs.reason }}" ]; then
+            echo "❌ ERROR: reason output is empty"
+            exit 1
+          fi
+
+          echo "✅ All outputs are valid"

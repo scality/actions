@@ -97,21 +97,21 @@ run_test "Weekly health check at 14 days" 0 "true"
 # Test 4: No trigger conditions (5 days, old commit)
 export LAST_COMMIT_TIME=$((current_time - 172800))  # 48 hours ago
 export DAYS_SINCE=5
-run_test "No trigger conditions (5 days since last run)" 1 "false"
+run_test "No trigger conditions (5 days since last run)" 0 "false"
 
 # Test 5: No trigger conditions (3 days, old commit)
 export STATUS="completed"
 export DAYS_SINCE=3
-run_test "No trigger conditions (old commit, 3 days)" 1 "false"
+run_test "No trigger conditions (old commit, 3 days)" 0 "false"
 
 # Test 6: Edge case - 0 days since last run
 export DAYS_SINCE=0
-run_test "Edge case: 0 days since last run" 1 "false"
+run_test "Edge case: 0 days since last run" 0 "false"
 
 # Test 7: Status not found, old commit
 export STATUS="not_found"
 export DAYS_SINCE=999
-run_test "Status not found, old commit" 1 "false"
+run_test "Status not found, old commit" 0 "false"
 
 # Summary
 echo ""
