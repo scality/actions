@@ -113,6 +113,62 @@ export STATUS="not_found"
 export DAYS_SINCE=999
 run_test "Status not found, old commit" 0 "false"
 
+# Test 8: Restart on failure - first failure (1 run, max 3)
+export LAST_COMMIT_TIME=$((current_time - 172800))  # 48 hours ago (old commit)
+export STATUS="completed"
+export DAYS_SINCE=1
+export RUN_COUNT=1
+export LAST_RUN_CONCLUSION="failure"
+export LAST_RUN_STATUS="completed"
+export MAX_RETRIES=3
+run_test "Restart on failure - first failure (1/3)" 0 "true"
+
+# Test 9: Restart on failure - max restarts reached
+export RUN_COUNT=3
+export LAST_RUN_CONCLUSION="failure"
+export MAX_RETRIES=3
+run_test "Max restarts reached (3/3)" 0 "false"
+
+# Test 10: No restart - last run succeeded
+export RUN_COUNT=2
+export LAST_RUN_CONCLUSION="success"
+export MAX_RETRIES=3
+run_test "Last run succeeded, no restart needed" 0 "false"
+
+# Test 11: Restart on timeout
+export RUN_COUNT=1
+export LAST_RUN_CONCLUSION="timed_out"
+export MAX_RETRIES=3
+run_test "Restart on timeout (1/3)" 0 "true"
+
+# Test 12: Restart on cancelled
+export RUN_COUNT=2
+export LAST_RUN_CONCLUSION="cancelled"
+export MAX_RETRIES=3
+run_test "Restart on cancelled (2/3)" 0 "true"
+
+# Test 13: Max retries disabled (0)
+export RUN_COUNT=1
+export LAST_RUN_CONCLUSION="failure"
+export MAX_RETRIES=0
+run_test "Max retries disabled (MAX_RETRIES=0)" 0 "false"
+
+# Test 14: Recent commit with successful run - should not trigger
+export LAST_COMMIT_TIME=$((current_time - 18000))  # 5 hours ago
+export RUN_COUNT=1
+export LAST_RUN_CONCLUSION="success"
+export MAX_RETRIES=3
+run_test "Recent commit with successful run" 0 "false"
+
+# Test 15: Weekly health check takes priority even when max restarts exceeded
+export LAST_COMMIT_TIME=$((current_time - 172800))  # 48 hours ago (old commit)
+export STATUS="completed"
+export DAYS_SINCE=7
+export RUN_COUNT=3
+export LAST_RUN_CONCLUSION="failure"
+export MAX_RETRIES=3
+run_test "Weekly health check with max restarts reached (7 days)" 0 "true"
+
 # Summary
 echo ""
 echo "═══════════════════════════════════════════"

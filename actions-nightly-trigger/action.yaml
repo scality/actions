@@ -24,6 +24,10 @@ inputs:
     description: 'Whether to actually run the workflow or only make decision (default: true)'
     required: false
     default: 'true'
+  max-start-if-last-failed:
+    description: 'Maximum number of times to retry if last workflow run on last commit failed (default: 0 - disabled)'
+    required: false
+    default: '0'
 
 outputs:
   trigger:
@@ -56,14 +60,17 @@ runs:
         ref: ${{ steps.set-branch.outputs.branch }}
         fetch-depth: 1
 
-    - name: Get last commit timestamp
+    - name: Get last commit info
       id: check-commits
       shell: bash
       run: |
-        # Get the timestamp of the last commit
+        # Get the timestamp and SHA of the last commit
         last_commit_time=$(git log -1 --format=%ct)
+        last_commit_sha=$(git log -1 --format=%H)
         echo "last_commit_time=$last_commit_time" >> $GITHUB_OUTPUT
+        echo "last_commit_sha=$last_commit_sha" >> $GITHUB_OUTPUT
         echo "📊 Last commit timestamp: $last_commit_time"
+        echo "📊 Last commit SHA: $last_commit_sha"
 
     - name: Check latest workflow run status
       id: check-status
@@ -109,6 +116,38 @@ runs:
 
         echo "🔍 Latest workflow run #$run_id: status=$status, conclusion=$conclusion"
 
+    - name: Count workflow runs on last commit
+      id: check-runs-on-commit
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        COMMIT_SHA: ${{ steps.check-commits.outputs.last_commit_sha }}
+      run: |
+        # Get all workflow runs for this specific commit SHA
+        runs=$(gh api \
+          -H "Accept: application/vnd.github+json" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          "/repos/${{ github.repository }}/actions/workflows/${{ inputs.workflow }}/runs?head_sha=${COMMIT_SHA}" \
+          --jq '.workflow_runs')
+
+        # Count total runs
+        run_count=$(echo "$runs" | jq 'length')
+        echo "run_count=$run_count" >> $GITHUB_OUTPUT
+        echo "🔢 Total runs on commit ${COMMIT_SHA:0:8}: $run_count"
+
+        # Get the most recent run's conclusion
+        if [ "$run_count" -gt 0 ]; then
+          last_run_conclusion=$(echo "$runs" | jq -r '.[0].conclusion')
+          last_run_status=$(echo "$runs" | jq -r '.[0].status')
+          echo "last_run_on_commit_conclusion=$last_run_conclusion" >> $GITHUB_OUTPUT
+          echo "last_run_on_commit_status=$last_run_status" >> $GITHUB_OUTPUT
+          echo "📊 Last run on this commit: status=$last_run_status, conclusion=$last_run_conclusion"
+        else
+          echo "last_run_on_commit_conclusion=not_found" >> $GITHUB_OUTPUT
+          echo "last_run_on_commit_status=not_found" >> $GITHUB_OUTPUT
+          echo "📊 No runs found on this commit"
+        fi
+
     - name: Decide whether to trigger workflow
       id: decide
       shell: bash
@@ -116,6 +155,10 @@ runs:
         LAST_COMMIT_TIME: ${{ steps.check-commits.outputs.last_commit_time }}
         STATUS: ${{ steps.check-status.outputs.status }}
         DAYS_SINCE: ${{ steps.check-status.outputs.days_since_last_run }}
+        RUN_COUNT: ${{ steps.check-runs-on-commit.outputs.run_count }}
+        LAST_RUN_CONCLUSION: ${{ steps.check-runs-on-commit.outputs.last_run_on_commit_conclusion }}
+        LAST_RUN_STATUS: ${{ steps.check-runs-on-commit.outputs.last_run_on_commit_status }}
+        MAX_RETRIES: ${{ inputs.max-start-if-last-failed }}
       run: |
         # Run the decision script
         ${{ github.action_path }}/decide-trigger.sh
