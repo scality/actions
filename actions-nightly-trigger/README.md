@@ -53,6 +53,7 @@ jobs:
 | `access_token` | GitHub token with workflow permissions | Yes | - |
 | `run-workflow` | Whether to actually run the workflow or only make decision | No | `true` |
 | `max-start-if-last-failed` | Maximum number of times to restart if last workflow run on last commit failed | No | `0` (disabled) |
+| `commit-check-period` | Time window in days to check for recent commits | No | `1` |
 
 ## Outputs
 
@@ -68,7 +69,7 @@ jobs:
 The action applies these rules in priority order:
 
 1. **Restart on failure**: If `max-start-if-last-failed` is set and the last workflow run on the last commit failed/timed out/cancelled, and we haven't exceeded the max restart count → Trigger
-2. **Recent commit**: If last commit in last 24 hours and no successful run exists on that commit → Trigger
+2. **Recent commit**: If last commit is within `commit-check-period` days and no successful run exists on that commit → Trigger
 3. **Weekly health check**: If last run was 7, 14, 21... days ago → Trigger (weekly check)
 4. Otherwise → Skip
 
@@ -90,6 +91,26 @@ Example with failure restart:
     workflow: "nightly.yaml"
     access_token: ${{ secrets.GIT_ACCESS_TOKEN }}
     max-start-if-last-failed: 3  # Restart up to 3 times on failure
+```
+
+### Configurable Commit Check Period
+
+The `commit-check-period` parameter allows you to adjust the time window for checking recent commits:
+
+- Set to `1` (default): Triggers if commit is within last 24 hours
+- Set to `2`: Triggers if commit is within last 48 hours (2 days)
+- Set to `N`: Triggers if commit is within last N days
+
+This is useful when your workflow runs less frequently (e.g., every 2-3 days):
+
+```yaml
+# For a workflow that runs every 2 days
+- uses: scality/actions/actions-nightly-trigger@main
+  with:
+    branch: "development/4"
+    workflow: "nightly.yaml"
+    access_token: ${{ secrets.GIT_ACCESS_TOKEN }}
+    commit-check-period: 2  # Check commits in last 2 days
 ```
 
 ## Testing Mode

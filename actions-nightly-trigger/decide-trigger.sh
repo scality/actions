@@ -12,14 +12,17 @@ RUN_COUNT="${RUN_COUNT:-0}"
 LAST_RUN_CONCLUSION="${LAST_RUN_CONCLUSION:-not_found}"
 LAST_RUN_STATUS="${LAST_RUN_STATUS:-not_found}"
 MAX_RETRIES="${MAX_RETRIES:-0}"
+COMMIT_CHECK_PERIOD="${COMMIT_CHECK_PERIOD:-1}"
 
 trigger="false"
 reason="No trigger conditions met"
 
-# Calculate if last commit is within 24 hours
+# Calculate if last commit is within the check period
 current_time=$(date +%s)
 time_diff=$((current_time - LAST_COMMIT_TIME))
 hours_ago=$((time_diff / 3600))
+days_ago=$((time_diff / 86400))
+check_period_seconds=$((COMMIT_CHECK_PERIOD * 86400))
 
 # Priority 1: Restart if last run on last commit failed and under max restarts
 if [ "$MAX_RETRIES" -gt 0 ]; then
@@ -38,15 +41,23 @@ if [ "$MAX_RETRIES" -gt 0 ]; then
     fi
 fi
 
-# Priority 2: Trigger if last commit is within 24 hours (and not already succeeded)
-if [ "$trigger" = "false" ] && [ "$LAST_COMMIT_TIME" -gt 0 ] && [ $time_diff -le 86400 ]; then
+# Priority 2: Trigger if last commit is within check period (and not already succeeded)
+if [ "$trigger" = "false" ] && [ "$LAST_COMMIT_TIME" -gt 0 ] && [ $time_diff -le $check_period_seconds ]; then
     # Only trigger if no successful run exists on this commit
     if [ "$LAST_RUN_CONCLUSION" != "success" ]; then
         trigger="true"
-        reason="Last commit was ${hours_ago}h ago (within 24h)"
+        if [ "$COMMIT_CHECK_PERIOD" -eq 1 ]; then
+            reason="Last commit was ${hours_ago}h ago (within ${COMMIT_CHECK_PERIOD} day)"
+        else
+            reason="Last commit was ${days_ago}d ago (within ${COMMIT_CHECK_PERIOD} days)"
+        fi
         echo "✨ $reason"
     else
-        echo "✅ Last commit was ${hours_ago}h ago but already has successful run"
+        if [ "$COMMIT_CHECK_PERIOD" -eq 1 ]; then
+            echo "✅ Last commit was ${hours_ago}h ago but already has successful run"
+        else
+            echo "✅ Last commit was ${days_ago}d ago but already has successful run"
+        fi
     fi
 
 # Priority 3: Weekly health check (modulo 7 ensures only once per week)

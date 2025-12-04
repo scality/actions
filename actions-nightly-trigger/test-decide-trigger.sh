@@ -167,7 +167,33 @@ export DAYS_SINCE=7
 export RUN_COUNT=3
 export LAST_RUN_CONCLUSION="failure"
 export MAX_RETRIES=3
+export COMMIT_CHECK_PERIOD=1
 run_test "Weekly health check with max restarts reached (7 days)" 0 "true"
+
+# Test 16: Commit within 2 day check period (30 hours ago)
+export LAST_COMMIT_TIME=$((current_time - 108000))  # 30 hours ago
+export STATUS="not_found"
+export DAYS_SINCE=999
+export RUN_COUNT=0
+export LAST_RUN_CONCLUSION="not_found"
+export MAX_RETRIES=0
+export COMMIT_CHECK_PERIOD=2
+run_test "Commit 30h ago within 2 day period" 0 "true"
+
+# Test 17: Commit outside 1 day check period (30 hours ago)
+export LAST_COMMIT_TIME=$((current_time - 108000))  # 30 hours ago
+export COMMIT_CHECK_PERIOD=1
+run_test "Commit 30h ago outside 1 day period" 0 "false"
+
+# Test 18: Commit within 3 day check period (50 hours ago)
+export LAST_COMMIT_TIME=$((current_time - 180000))  # 50 hours ago
+export COMMIT_CHECK_PERIOD=3
+run_test "Commit 50h ago within 3 day period" 0 "true"
+
+# Test 19: Commit outside 2 day check period (50 hours ago)
+export LAST_COMMIT_TIME=$((current_time - 180000))  # 50 hours ago
+export COMMIT_CHECK_PERIOD=2
+run_test "Commit 50h ago outside 2 day period" 0 "false"
 
 # Summary
 echo ""

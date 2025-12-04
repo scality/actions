@@ -28,6 +28,10 @@ inputs:
     description: 'Maximum number of times to retry if last workflow run on last commit failed (default: 0 - disabled)'
     required: false
     default: '0'
+  commit-check-period:
+    description: 'Time window in days to check for recent commits (default: 1 day)'
+    required: false
+    default: '1'
 
 outputs:
   trigger:
@@ -159,6 +163,7 @@ runs:
         LAST_RUN_CONCLUSION: ${{ steps.check-runs-on-commit.outputs.last_run_on_commit_conclusion }}
         LAST_RUN_STATUS: ${{ steps.check-runs-on-commit.outputs.last_run_on_commit_status }}
         MAX_RETRIES: ${{ inputs.max-start-if-last-failed }}
+        COMMIT_CHECK_PERIOD: ${{ inputs.commit-check-period }}
       run: |
         # Run the decision script
         ${{ github.action_path }}/decide-trigger.sh
