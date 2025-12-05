@@ -177,6 +177,7 @@ runs:
 
     - name: Trigger workflow
       if: steps.decide.outputs.trigger == 'true' && inputs.run-workflow == 'true'
+      id: trigger
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.access_token }}
@@ -186,18 +187,51 @@ runs:
         echo "📋 Reason: ${{ steps.decide.outputs.reason }}"
         gh workflow run "${{ inputs.workflow }}" --ref="${BRANCH}"
 
+        # Wait for the workflow run to be created
+        echo "⏳ Waiting for workflow run to be created..."
+        sleep 3
+
+        # Get the latest workflow run ID
+        new_run_id=$(gh run list --workflow="${{ inputs.workflow }}" --branch="${BRANCH}" --limit=1 --json databaseId --jq '.[0].databaseId')
+
+        if [ -n "${new_run_id}" ]; then
+          echo "triggered_run_id=${new_run_id}" >> $GITHUB_OUTPUT
+          echo "✅ Triggered run ID: ${new_run_id}"
+        fi
+
     - name: Log decision
       shell: bash
       env:
         BRANCH: ${{ steps.set-branch.outputs.branch }}
+        WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/workflows/${{ inputs.workflow }}
+        TRIGGERED_RUN_ID: ${{ steps.trigger.outputs.triggered_run_id }}
       run: |
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "📊 Smart Nightly Trigger Decision Summary"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "Branch: ${BRANCH}"
-        echo "Trigger: ${{ steps.decide.outputs.trigger }}"
-        echo "Reason: ${{ steps.decide.outputs.reason }}"
-        echo "Last commit time: ${{ steps.check-commits.outputs.last_commit_time }}"
-        echo "Days since last run: ${{ steps.check-status.outputs.days_since_last_run }}"
-        echo "Last status: ${{ steps.check-status.outputs.conclusion }}"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        # Build summary using heredoc
+        SUMMARY=$(cat <<EOF
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        📊 Smart Nightly Trigger Decision Summary
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        Workflow: ${{ inputs.workflow }}
+        Workflow URL: ${WORKFLOW_URL}
+        Branch: ${BRANCH}
+        Trigger: ${{ steps.decide.outputs.trigger }}
+        Reason: ${{ steps.decide.outputs.reason }}
+        EOF
+        )
+
+        if [ -n "${TRIGGERED_RUN_ID}" ]; then
+          SUMMARY="${SUMMARY}
+        Triggered run: https://github.com/${{ github.repository }}/actions/runs/${TRIGGERED_RUN_ID}"
+        fi
+
+        SUMMARY="${SUMMARY}
+        Last commit time: ${{ steps.check-commits.outputs.last_commit_time }}
+        Days since last run: ${{ steps.check-status.outputs.days_since_last_run }}
+        Last status: ${{ steps.check-status.outputs.conclusion }}
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+        # Display to console
+        echo "${SUMMARY}"
+
+        # Write to GITHUB_STEP_SUMMARY
+        echo "${SUMMARY}" >> $GITHUB_STEP_SUMMARY
