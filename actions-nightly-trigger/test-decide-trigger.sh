@@ -113,6 +113,88 @@ export STATUS="not_found"
 export DAYS_SINCE=999
 run_test "Status not found, old commit" 0 "false"
 
+# Test 8: Restart on failure - first failure (1 run, max 3)
+export LAST_COMMIT_TIME=$((current_time - 172800))  # 48 hours ago (old commit)
+export STATUS="completed"
+export DAYS_SINCE=1
+export RUN_COUNT=1
+export LAST_RUN_CONCLUSION="failure"
+export LAST_RUN_STATUS="completed"
+export MAX_RETRIES=3
+run_test "Restart on failure - first failure (1/3)" 0 "true"
+
+# Test 9: Restart on failure - max restarts reached
+export RUN_COUNT=3
+export LAST_RUN_CONCLUSION="failure"
+export MAX_RETRIES=3
+run_test "Max restarts reached (3/3)" 0 "false"
+
+# Test 10: No restart - last run succeeded
+export RUN_COUNT=2
+export LAST_RUN_CONCLUSION="success"
+export MAX_RETRIES=3
+run_test "Last run succeeded, no restart needed" 0 "false"
+
+# Test 11: Restart on timeout
+export RUN_COUNT=1
+export LAST_RUN_CONCLUSION="timed_out"
+export MAX_RETRIES=3
+run_test "Restart on timeout (1/3)" 0 "true"
+
+# Test 12: Restart on cancelled
+export RUN_COUNT=2
+export LAST_RUN_CONCLUSION="cancelled"
+export MAX_RETRIES=3
+run_test "Restart on cancelled (2/3)" 0 "true"
+
+# Test 13: Max retries disabled (0)
+export RUN_COUNT=1
+export LAST_RUN_CONCLUSION="failure"
+export MAX_RETRIES=0
+run_test "Max retries disabled (MAX_RETRIES=0)" 0 "false"
+
+# Test 14: Recent commit with successful run - should not trigger
+export LAST_COMMIT_TIME=$((current_time - 18000))  # 5 hours ago
+export RUN_COUNT=1
+export LAST_RUN_CONCLUSION="success"
+export MAX_RETRIES=3
+run_test "Recent commit with successful run" 0 "false"
+
+# Test 15: Weekly health check takes priority even when max restarts exceeded
+export LAST_COMMIT_TIME=$((current_time - 172800))  # 48 hours ago (old commit)
+export STATUS="completed"
+export DAYS_SINCE=7
+export RUN_COUNT=3
+export LAST_RUN_CONCLUSION="failure"
+export MAX_RETRIES=3
+export COMMIT_CHECK_PERIOD=1
+run_test "Weekly health check with max restarts reached (7 days)" 0 "true"
+
+# Test 16: Commit within 2 day check period (30 hours ago)
+export LAST_COMMIT_TIME=$((current_time - 108000))  # 30 hours ago
+export STATUS="not_found"
+export DAYS_SINCE=999
+export RUN_COUNT=0
+export LAST_RUN_CONCLUSION="not_found"
+export MAX_RETRIES=0
+export COMMIT_CHECK_PERIOD=2
+run_test "Commit 30h ago within 2 day period" 0 "true"
+
+# Test 17: Commit outside 1 day check period (30 hours ago)
+export LAST_COMMIT_TIME=$((current_time - 108000))  # 30 hours ago
+export COMMIT_CHECK_PERIOD=1
+run_test "Commit 30h ago outside 1 day period" 0 "false"
+
+# Test 18: Commit within 3 day check period (50 hours ago)
+export LAST_COMMIT_TIME=$((current_time - 180000))  # 50 hours ago
+export COMMIT_CHECK_PERIOD=3
+run_test "Commit 50h ago within 3 day period" 0 "true"
+
+# Test 19: Commit outside 2 day check period (50 hours ago)
+export LAST_COMMIT_TIME=$((current_time - 180000))  # 50 hours ago
+export COMMIT_CHECK_PERIOD=2
+run_test "Commit 50h ago outside 2 day period" 0 "false"
+
 # Summary
 echo ""
 echo "═══════════════════════════════════════════"
