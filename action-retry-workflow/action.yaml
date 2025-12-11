@@ -1,0 +1,78 @@
+name: 'Retry Workflow if Failed'
+description: 'Checks the last workflow run on a branch and retries it if failed'
+
+# Required permissions for the calling workflow:
+#   actions: write      # For re-running workflow jobs via GitHub API
+#
+# Note: The access_token input must be a Personal Access Token (PAT) or GitHub App token
+#       with 'repo' and 'workflow' scopes to trigger workflow retries.
+#       The default GITHUB_TOKEN cannot trigger workflows due to GitHub security restrictions.
+
+inputs:
+  branch:
+    description: 'Branch name to check (will check workflow only on the last commit, defaults to repository default branch)'
+    required: false
+  workflow:
+    description: 'Workflow name to check (e.g., "test.yaml" or workflow display name)'
+    required: true
+  max-retries:
+    description: 'Maximum number of retries allowed'
+    required: false
+    default: '1'
+  retry-mode:
+    description: 'Retry behavior: "all" (retry all jobs) or "failed-only" (retry only failed jobs)'
+    required: false
+    default: 'failed-only'
+  job-name:
+    description: 'Only retry if this specific job failed (optional). If specified, ignores failures in other jobs.'
+    required: false
+    default: ''
+  step-name:
+    description: 'Only retry if this specific step failed (optional). If job-name also specified, looks for step in that job only.'
+    required: false
+    default: ''
+  access_token:
+    description: 'GitHub token with workflow permissions (required for triggering retries)'
+    required: true
+
+outputs:
+  status:
+    description: 'Current status of the workflow (success, failure, cancelled, etc.)'
+    value: ${{ steps.retry.outputs.status }}
+  retry-count:
+    description: 'Number of retries that have been performed'
+    value: ${{ steps.retry.outputs.retry_count }}
+  was-retried:
+    description: 'Whether the workflow was retried by this action (true/false)'
+    value: ${{ steps.retry.outputs.was_retried }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set target branch
+      id: set-branch
+      shell: bash
+      run: |
+        BRANCH="${{ inputs.branch || github.event.repository.default_branch }}"
+        echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+        echo "🎯 Target branch: $BRANCH"
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Retry workflow
+      id: retry
+      shell: bash
+      run: |
+        python3 ${{ github.action_path }}/retry_workflow.py \
+          --branch "${{ steps.set-branch.outputs.branch }}" \
+          --workflow "${{ inputs.workflow }}" \
+          --max-retries "${{ inputs.max-retries }}" \
+          --retry-mode "${{ inputs.retry-mode }}" \
+          ${{ inputs.job-name && format('--job-name "{0}"', inputs.job-name) || '' }} \
+          ${{ inputs.step-name && format('--step-name "{0}"', inputs.step-name) || '' }} \
+          --output-file "$GITHUB_OUTPUT"
+      env:
+        GITHUB_TOKEN: ${{ inputs.access_token }}
