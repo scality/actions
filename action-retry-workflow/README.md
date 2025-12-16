@@ -83,6 +83,7 @@ jobs:
           echo "Workflow status: ${{ steps.retry.outputs.status }}"
           echo "Retry count: ${{ steps.retry.outputs.retry-count }}"
           echo "Was retried: ${{ steps.retry.outputs.was-retried }}"
+          echo "Run ID: ${{ steps.retry.outputs.run-id }}"
 
       - name: Notify on retry
         if: steps.retry.outputs.was-retried == 'true'
@@ -189,6 +190,7 @@ You can optionally filter retries to only trigger when a specific job or step fa
 | `status` | Current status/conclusion of the workflow | `success`, `failure`, `cancelled`, `timed_out`, `not_found` |
 | `retry-count` | Number of retries performed | `0`, `1`, `2` |
 | `was-retried` | Whether the workflow was retried by this action | `true`, `false` |
+| `run-id` | The workflow run ID that was checked/retried | `12345678`, `87654321` |
 
 ## Step Summary
 

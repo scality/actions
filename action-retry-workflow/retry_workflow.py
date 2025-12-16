@@ -601,7 +601,8 @@ class RetryOutputWriter:
         output_file: Optional[str],
         status: str,
         retry_count: int,
-        was_retried: bool
+        was_retried: bool,
+        run_id: Optional[int] = None
     ) -> None:
         """
         Write output variables for GitHub Actions.
@@ -611,11 +612,13 @@ class RetryOutputWriter:
             status: Workflow status
             retry_count: Number of retries performed
             was_retried: Whether retry was triggered
+            run_id: Workflow run ID (optional)
         """
         variables = {
             "status": status,
             "retry_count": str(retry_count),
-            "was_retried": "true" if was_retried else "false"
+            "was_retried": "true" if was_retried else "false",
+            "run_id": str(run_id) if run_id else ""
         }
 
         if output_file:
@@ -838,7 +841,8 @@ def main() -> int:
             args.output_file,
             result["status"],
             result["retry_count"],
-            result["was_retried"]
+            result["was_retried"],
+            result["run_id"]
         )
 
         RetryOutputWriter.write_step_summary(
@@ -849,7 +853,7 @@ def main() -> int:
             result["was_retried"],
             args.max_retries,
             args.retry_mode,
-            result.get("run_id")
+            result["run_id"]
         )
 
         return 0

@@ -45,6 +45,9 @@ outputs:
   was-retried:
     description: 'Whether the workflow was retried by this action (true/false)'
     value: ${{ steps.retry.outputs.was_retried }}
+  run-id:
+    description: 'The workflow run ID that was checked/retried'
+    value: ${{ steps.retry.outputs.run_id }}
 
 runs:
   using: composite
