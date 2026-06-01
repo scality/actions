@@ -1,0 +1,121 @@
+name: Deploy Documentation
+description: 'Deploy documentation artifacts to the documentation server via SSH/rsync'
+
+inputs:
+  artifacts-name:
+    required: true
+    description: Name of the artifact to download from the artifacts server
+  version:
+    required: true
+    description: Version string (e.g. 9.5.1)
+  product-path:
+    required: true
+    description: >
+      Space-separated list of sub-paths on the documentation server
+      for which to create latest symlinks (e.g. "RING S3C" or "ARTESCA")
+  artifacts-url:
+    required: false
+    description: Base URL for the artifacts server
+    default: https://artifacts.scality.net
+  artifacts-user:
+    required: true
+    description: Username for artifacts server authentication
+  artifacts-password:
+    required: true
+    description: Password for artifacts server authentication
+  documentation-ssh-private-key:
+    required: true
+    description: SSH private key for the documentation server
+  documentation-website:
+    required: true
+    description: Hostname of the documentation server
+  documentation-ssh-public-key:
+    required: true
+    description: SSH public key for the documentation server
+  documentation-ssh-user:
+    required: true
+    description: SSH username for the documentation server
+  site-path:
+    required: true
+    description: Base filesystem path on the documentation server
+  documentation-website-file-owner:
+    required: true
+    description: File owner (user:group) for deployed files
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup SSH credentials
+      shell: bash
+      env:
+        DOCUMENTATION_SSH_PRIVATE_KEY: ${{ inputs.documentation-ssh-private-key }}
+        DOCUMENTATION_SSH_PUBLIC_KEY: ${{ inputs.documentation-ssh-public-key }}
+        DOCUMENTATION_SSH_USER: ${{ inputs.documentation-ssh-user }}
+        DOCUMENTATION_WEBSITE: ${{ inputs.documentation-website }}
+      run: |
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+        echo "$DOCUMENTATION_SSH_PRIVATE_KEY" > ~/.ssh/"$DOCUMENTATION_SSH_USER"
+        echo "$DOCUMENTATION_SSH_PUBLIC_KEY" > ~/.ssh/"$DOCUMENTATION_SSH_USER".pub
+        cat >> ~/.ssh/config << SSHEOF
+        Host documentation
+            HostName ${DOCUMENTATION_WEBSITE}
+            Port 822
+            User ${DOCUMENTATION_SSH_USER}
+            IdentityFile ~/.ssh/${DOCUMENTATION_SSH_USER}
+            UserKnownHostsFile /dev/null
+            StrictHostKeyChecking no
+        SSHEOF
+        chmod 600 ~/.ssh/"$DOCUMENTATION_SSH_USER" ~/.ssh/"$DOCUMENTATION_SSH_USER".pub ~/.ssh/config
+
+    - name: Download, copy and deploy documentation
+      shell: bash
+      env:
+        ARTIFACTS_USER: ${{ inputs.artifacts-user }}
+        ARTIFACTS_PASSWORD: ${{ inputs.artifacts-password }}
+        ARTIFACTS_URL: ${{ inputs.artifacts-url }}
+        ARTIFACTS_NAME: ${{ inputs.artifacts-name }}
+        VERSION: ${{ inputs.version }}
+        SITE_PATH: ${{ inputs.site-path }}
+        DOCUMENTATION_WEBSITE_FILE_OWNER: ${{ inputs.documentation-website-file-owner }}
+      run: |
+        TMP_DIR=$(mktemp -d)
+        echo "Downloading website..."
+        curl --silent \
+          --show-error \
+          --user "${ARTIFACTS_USER}:${ARTIFACTS_PASSWORD}" \
+          --output "${TMP_DIR}/website-${VERSION}.tar.gz" \
+          --fail \
+          --url "${ARTIFACTS_URL}/builds/${ARTIFACTS_NAME}/website-${VERSION}.tar.gz"
+        echo "Website downloaded"
+        echo "Copying website..."
+        rsync "${TMP_DIR}/website-${VERSION}.tar.gz" "documentation:/tmp/website-${VERSION}.tar.gz"
+        echo "Website copied"
+        echo "Deploying website..."
+        ssh documentation sudo tar -xzf "/tmp/website-${VERSION}.tar.gz" -C "${SITE_PATH}"
+        ssh documentation rm -f "/tmp/website-${VERSION}.tar.gz"
+        ssh documentation sudo chown -R "${DOCUMENTATION_WEBSITE_FILE_OWNER}" "${SITE_PATH}"
+        ssh documentation sudo find "${SITE_PATH}" -type f -exec chmod 664 '{}' +
+        ssh documentation sudo find "${SITE_PATH}" -type d -exec chmod 775 '{}' +
+        ssh documentation sudo restorecon -FR "${SITE_PATH}"
+        echo "Website deployed"
+
+    - name: Update latest symlinks
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        SITE_PATH: ${{ inputs.site-path }}
+        PRODUCT_PATH: ${{ inputs.product-path }}
+      run: |
+        DEFAULT_BRANCH=$(git remote show origin | grep "HEAD branch" | cut -d ":" -f 2 | xargs)
+        if [ "${GITHUB_SHA}" = "$(git rev-parse origin/${DEFAULT_BRANCH})" ]; then
+          echo "Tagging latest version for paths: ${PRODUCT_PATH}"
+          for path in ${PRODUCT_PATH}; do
+            ssh documentation sudo ln -nsf "${SITE_PATH}/${path}/${VERSION}" "${SITE_PATH}/${path}/latest"
+          done
+        fi
+
+    - name: Cleanup SSH credentials
+      shell: bash
+      if: always()
+      run: rm -rf ~/.ssh
