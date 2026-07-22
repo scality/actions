@@ -1,0 +1,41 @@
+name: Test Arti Compute Action
+
+on:
+  push:
+    paths:
+      - 'arti-compute/**'
+      - '.github/workflows/test-arti-compute.yaml'
+  pull_request:
+    paths:
+      - 'arti-compute/**'
+      - '.github/workflows/test-arti-compute.yaml'
+
+jobs:
+  check-tech-train:
+    name: Smoke check-tech-train
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Valid TECH_TRAIN entry
+        uses: ./arti-compute
+        with:
+          check-tech-train: '10.1.0.0'
+          version-file: ${{ github.workspace }}/arti-compute/testdata/VERSION
+
+      - name: Missing TECH_TRAIN entry should fail
+        id: missing-key
+        continue-on-error: true
+        uses: ./arti-compute
+        with:
+          check-tech-train: '10.9.0.0'
+          version-file: ${{ github.workspace }}/arti-compute/testdata/VERSION
+
+      - name: Assert missing key failed
+        shell: bash
+        run: |
+          if [ "${{ steps.missing-key.outcome }}" != "failure" ]; then
+            echo "Expected check-tech-train for 10.9.0.0 to fail"
+            exit 1
+          fi

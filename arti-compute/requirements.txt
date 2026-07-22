@@ -1,0 +1,4 @@
+natsort
+requests
+PyYAML
+boto3
