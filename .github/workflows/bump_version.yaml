@@ -13,8 +13,6 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - name: create fake version file
         run: |
           echo "VERSION=1.2.3" > VERSION
