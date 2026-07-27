@@ -19,10 +19,6 @@ import arti_compute as ac                                # noqa: E402
 from arti_compute import ArtiCompute, _split_os_minor    # noqa: E402
 
 
-RING = "9.5.2.5"
-SUFFIX = "GA"
-
-
 def _ac(os_name, ring_version):
     """Build a minimal ArtiCompute instance without running __init__."""
     obj = ArtiCompute.__new__(ArtiCompute)
@@ -127,16 +123,6 @@ def test_upgradeprev_matrix(current, raw_os, canonical, upgradeprev_from,
         canonical, current, upgradeprev_from, is_previous=True) is supported
 
 
-def _snap(osver, ring=RING, nodes=3, suffix=SUFFIX, family="redhat"):
-    """Build a snapshot platform_name as tagged by installci."""
-    return f"RING-{ring}-{family}{osver}-{nodes}nodes[{suffix}]"
-
-
-def _select(snapshots, os_minor, os_major="9", family="redhat", suffix=SUFFIX):
-    return ArtiCompute._select_snapshot(
-        snapshots, RING, family, os_major, os_minor, suffix)
-
-
 # OS tuple is built from _ring_major; assert each OS's membership against the
 # _ring_major resolved at import (testdata/VERSION via conftest.py) so this
 # stays correct whichever RING version the action is pinned to.
@@ -151,72 +137,102 @@ def test_os_tuple_gating(os_name, expected_present):
     assert (os_name in ac.OS) is expected_present
 
 
-class TestSplitOsMinor:
-    def test_with_minor(self):
-        assert _split_os_minor("rhel9.6") == ("rhel9", "9.6")
-
-    def test_without_minor(self):
-        assert _split_os_minor("rhel9") == ("rhel9", None)
-        assert _split_os_minor("rocky9") == ("rocky9", None)
-
-    def test_double_digit_major(self):
-        assert _split_os_minor("rhel10.2") == ("rhel10", "10.2")
-
-    def test_scalityos_unchanged(self):
-        assert _split_os_minor("scalityos-9.7") == ("scalityos-9.7", None)
+SPLIT_OS_MINOR_CASES = [
+    ("rhel9.6", ("rhel9", "9.6")),
+    ("rhel9", ("rhel9", None)),
+    ("rocky9", ("rocky9", None)),
+    ("rocky8.10", ("rocky8", "8.10")),
+    # double-digit major: the minor must not swallow the major's second digit
+    ("rhel10.2", ("rhel10", "10.2")),
+    ("scalityos-9.7", ("scalityos-9.7", None)),
+]
 
 
-class TestSelectSnapshot:
-    def test_exact_minor(self):
-        snaps = [_snap("9.6"), _snap("9.7")]
-        assert _select(snaps, "9.6") == _snap("9.6")
+@pytest.mark.parametrize("os_name,expected", SPLIT_OS_MINOR_CASES,
+                         ids=[c[0] for c in SPLIT_OS_MINOR_CASES])
+def test_split_os_minor(os_name, expected):
+    assert _split_os_minor(os_name) == expected
 
-    def test_highest_below_target(self):
-        # target 9.8, only 9.6/9.7 exist -> highest <= target
-        snaps = [_snap("9.6"), _snap("9.7")]
-        assert _select(snaps, "9.8") == _snap("9.7")
 
-    def test_no_minor_below_target_returns_none(self):
-        # No-match case 1: candidates exist for this (ring, major, suffix) set
-        # but none is <= target (target 9.4, only 9.6/9.7). Returns None ->
-        # caller falls back to a fresh install-for-upgrade (as before).
-        snaps = [_snap("9.6"), _snap("9.7")]
-        assert _select(snaps, "9.4") is None
+# Real platform_name snapshot tags (from live AWS). Bare-major tags (redhat9,
+# rocky9) count as minor 0; two non-GA redhat9.6 tags test suffix filtering.
+SNAPSHOTS = [
+    "RING-9.5.2.6-redhat8-3nodes[GA]",
+    "RING-9.5.2.6-redhat9-3nodes[GA]",
+    "RING-9.5.2.6-redhat9.6-3nodes[GA]",
+    "RING-9.5.2.6-redhat9.6-3nodes[9.5.2.6_pw1]",
+    "RING-9.5.2.6-redhat9.6-3nodes[redhat96-test]",
+    "RING-9.5.2.6-rocky8-3nodes[GA]",
+    "RING-9.5.2.6-rocky9-3nodes[GA]",
+    "RING-10.0.0.0-redhat9.6-3nodes[GA]",
+    "RING-10.0.0.0-redhat9.7-3nodes[GA]",
+    "RING-10.1.0.0-redhat9.7-3nodes[GA]",
+    "RING-10.1.0.0-redhat9.8-3nodes[GA]",
+]
 
-    def test_no_candidates_returns_none(self):
-        # No-match case 2: no snapshot at all for this (ring, major, suffix)
-        # set (only another major present). Returns None -> fresh install.
-        snaps = [_snap("8.10")]
-        assert _select(snaps, "9.6", os_major="9") is None
-        assert _select(snaps, None, os_major="9") is None
+# The trailing "9.9" is a middle segment: the anchored regex must read osver as
+# the bare major (minor 0), never 9.9.
+ANCHOR_SNAPSHOTS = [
+    "RING-9.5.2.6-redhat9-3nodes-extra-redhat9.9[GA]",
+    "RING-9.5.2.6-redhat9.5-3nodes[GA]",
+]
 
-    def test_major_only_target_picks_highest(self):
-        snaps = [_snap("9.6"), _snap("9.7")]
-        assert _select(snaps, None) == _snap("9.7")
+# Only another major is present, so a major-9 request has no candidate at all.
+OTHER_MAJOR_ONLY = ["RING-9.5.2.6-redhat8.10-3nodes[GA]"]
 
-    def test_bare_major_fallback(self):
-        # target 9.6: 9.8 too high, bare "9" (minor 0) is the fallback
-        snaps = [_snap("9"), _snap("9.8")]
-        assert _select(snaps, "9.6") == _snap("9")
+# Only a bare-major tag is present (minor 0).
+BARE_MAJOR_ONLY = ["RING-9.5.2.6-redhat9-3nodes[GA]"]
 
-    def test_bare_major_only_available(self):
-        snaps = [_snap("9")]
-        assert _select(snaps, "9.7") == _snap("9")
-        assert _select(snaps, None) == _snap("9")
+# (id, snapshots, ring_version, family, major, minor, suffix, expected)
+# minor is the full 'major.minor' or None; family is 'redhat', not 'rhel'.
+SELECT_SNAPSHOT_CASES = [
+    ("exact-minor", SNAPSHOTS, "10.0.0.0", "redhat", "9", "9.7", "GA",
+     "RING-10.0.0.0-redhat9.7-3nodes[GA]"),
+    # real CI anchor: 9.8 requested, highest available is 9.6
+    ("highest-below-target", SNAPSHOTS, "9.5.2.6", "redhat", "9", "9.8", "GA",
+     "RING-9.5.2.6-redhat9.6-3nodes[GA]"),
+    ("never-higher-minor", SNAPSHOTS, "10.1.0.0", "redhat", "9", "9.6", "GA",
+     None),
+    ("major-only-highest", SNAPSHOTS, "10.1.0.0", "redhat", "9", None, "GA",
+     "RING-10.1.0.0-redhat9.8-3nodes[GA]"),
+    ("bare-major-minor0-fallback", SNAPSHOTS, "9.5.2.6", "redhat", "9", "9.5",
+     "GA", "RING-9.5.2.6-redhat9-3nodes[GA]"),
+    ("bare-major-rocky", SNAPSHOTS, "9.5.2.6", "rocky", "9", "9.9", "GA",
+     "RING-9.5.2.6-rocky9-3nodes[GA]"),
+    ("other-major-isolated", SNAPSHOTS, "9.5.2.6", "redhat", "8", "8.10", "GA",
+     "RING-9.5.2.6-redhat8-3nodes[GA]"),
+    ("suffix-mismatch-ignored", SNAPSHOTS, "9.5.2.6", "redhat", "9", "9.6",
+     "GA", "RING-9.5.2.6-redhat9.6-3nodes[GA]"),
+    ("wrong-ring-version", SNAPSHOTS, "9.9.9.9", "redhat", "9", "9.9", "GA",
+     None),
+    ("family-mismatch", SNAPSHOTS, "9.5.2.6", "redhat", "9", None, "GA",
+     "RING-9.5.2.6-redhat9.6-3nodes[GA]"),
+    ("empty-list", [], "9.5.2.6", "redhat", "9", "9.6", "GA", None),
+    ("anchoring", ANCHOR_SNAPSHOTS, "9.5.2.6", "redhat", "9", "9.9", "GA",
+     "RING-9.5.2.6-redhat9.5-3nodes[GA]"),
+    # No candidate for the requested major at all -> None, both with and
+    # without a requested minor (caller falls back to a fresh install).
+    ("no-candidate-for-major", OTHER_MAJOR_ONLY, "9.5.2.6", "redhat", "9",
+     "9.6", "GA", None),
+    ("no-candidate-for-major-no-minor", OTHER_MAJOR_ONLY, "9.5.2.6", "redhat",
+     "9", None, "GA", None),
+    # Bare major is the only tag: eligible for a minor request and for a
+    # major-only request alike.
+    ("bare-major-only-with-minor", BARE_MAJOR_ONLY, "9.5.2.6", "redhat", "9",
+     "9.7", "GA", "RING-9.5.2.6-redhat9-3nodes[GA]"),
+    ("bare-major-only-no-minor", BARE_MAJOR_ONLY, "9.5.2.6", "redhat", "9",
+     None, "GA", "RING-9.5.2.6-redhat9-3nodes[GA]"),
+    # Requested suffix matches nothing -> None.
+    ("suffix-matches-nothing", SNAPSHOTS, "9.5.2.6", "redhat", "9", "9.6",
+     "no-such-suffix", None),
+]
 
-    def test_other_major_ignored(self):
-        snaps = [_snap("8.10"), _snap("9.6")]
-        assert _select(snaps, "9.6") == _snap("9.6")
-        assert _select([_snap("8.10")], "9.6", os_major="9") is None
 
-    def test_suffix_mismatch_ignored(self):
-        snaps = [_snap("9.6", suffix="mytest")]
-        assert _select(snaps, "9.6", suffix="GA") is None
-        assert _select(snaps, "9.6", suffix="mytest") == _snap("9.6", suffix="mytest")
-
-    def test_rocky_family(self):
-        snaps = [_snap("9", family="rocky"), _snap("9.6", family="redhat")]
-        assert _select(snaps, None, family="rocky") == _snap("9", family="rocky")
-
-    def test_empty(self):
-        assert _select([], "9.6") is None
+@pytest.mark.parametrize(
+    "snapshots,ring_version,family,major,minor,suffix,expected",
+    [c[1:] for c in SELECT_SNAPSHOT_CASES],
+    ids=[c[0] for c in SELECT_SNAPSHOT_CASES])
+def test_select_snapshot(snapshots, ring_version, family, major, minor, suffix,
+                         expected):
+    assert ArtiCompute._select_snapshot(
+        snapshots, ring_version, family, major, minor, suffix) == expected
