@@ -180,6 +180,7 @@ TECH_TRAIN = {
     'previous-9.5.1': '8.5.12',
     'previous-9.5.2': '8.5.12',
     'previous-9.5.3': '8.5.12',
+    'previous-9.5.4': '8.5.12',
 
     'previous-10.0.0': '9.5.2',
     'previous-10.1.0': '9.5.2',
