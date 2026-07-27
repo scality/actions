@@ -1219,13 +1219,13 @@ class ArtiCompute:
                 if not response.ok:
                     raise ArtifactError(f"_find_latest_s3_installer(): {response.reason} ({response.status_code})")
                 reS3Version = re.compile(
-                    rf'github:scality:[fF]ederation:staging-{s3_version}([.](\d+[.]?){0,3})?.+[.]build[.].+$')
+                    rf'github:scality:[fF]ederation:staging-{s3_version}([.](\d+[.]?){{0,3}})?.+[.]build[.].+$')
                 reS3VersionGA = re.compile(
-                    rf'github:scality:[fF]ederation:promoted-{s3_version}([.](\d+[.]?){0,3})?/$')
+                    rf'github:scality:[fF]ederation:promoted-{s3_version}([.](\d+[.]?){{0,3}})?/$')
                 reS3VersionRC = re.compile(
-                    rf'github:scality:[fF]ederation:promoted-{s3_version}([.](\d+[.]?){0,3})?_rc.+$')
+                    rf'github:scality:[fF]ederation:promoted-{s3_version}([.](\d+[.]?){{0,3}})?_rc.+$')
                 reS3VersionPW = re.compile(
-                    rf'github:scality:[fF]ederation:promoted-{s3_version}([.](\d+[.]?){0,3})?_pw.+$')
+                    rf'github:scality:[fF]ederation:promoted-{s3_version}([.](\d+[.]?){{0,3}})?_pw.+$')
                 for line in response.text.splitlines():
                     if reS3Version.match(line):
                         latest_version['LAST'] = line
