@@ -145,6 +145,24 @@ def is_scality_managed_os(os_name):
     """Check if OS is a Scality-managed image (scalityos or adi)"""
     return bool(SCALITYOS_VERSION_REGEX.match(os_name) or ADI_OS_REGEX.match(os_name))
 
+
+def _split_os_minor(os_name):
+    """Split an OS name into its major-only form and optional minor version.
+
+    Examples:
+        rhel9.6 -> ('rhel9', '9.6')
+        rhel9   -> ('rhel9', None)
+        rocky9  -> ('rocky9', None)
+    scalityos/adi names are returned unchanged, with no minor.
+    """
+    if is_scality_managed_os(os_name):
+        return os_name, None
+    m = re.match(r'^(?P<base>[a-zA-Z]+\d+)\.(?P<minor>\d+)$', os_name)
+    if not m:
+        return os_name, None
+    major = re.search(r'\d+$', m.group('base')).group(0)
+    return m.group('base'), f"{major}.{m.group('minor')}"
+
 # Architecture (1st one is the default)
 ARCHITECTURE = (
     '1site_3nodes_s3_sofs',
@@ -281,6 +299,10 @@ class ArtiCompute:
                  upgrade_from_version=None, architecture=ARCHITECTURE[0], suffix=None, region=None,
                  adi_artifact=None, github_token=None, ring_explicit=False,
                  adi_upgrade_from_version=None, adi_branch=None):
+        # Accept an optional OS minor (e.g. rhel9.6): keep os_name major-only
+        # for installer/S3/validity logic, and remember the minor so snapshot
+        # selection can pick the closest matching minor (see _select_snapshot).
+        os_name, self.os_minor = _split_os_minor(os_name)
         if not is_valid_os(os_name):
             raise ValueError(f"Unknown OS name '{os_name}'")
 
@@ -437,7 +459,7 @@ class ArtiCompute:
                         self.os_name, self.offline, auth=self.auth)
                     self._upgrade_snapshot = self._find_snapshot(
                         self._ring_upgrade_from, self.os_name,
-                        self.nb_nodes, self.suffix)
+                        self.nb_nodes, self.suffix, os_minor=self.os_minor)
                 except (ArtifactError, VersionError):
                     if 'upgrade' in self.jobs:
                         raise
@@ -463,7 +485,8 @@ class ArtiCompute:
                                 ring_installer=self._ring_upgrade_from,
                                 os_name=self.os_name,
                                 nb_nodes=self.nb_nodes,
-                                snapshot_suffix=self.suffix)
+                                snapshot_suffix=self.suffix,
+                                os_minor=self.os_minor)
                             break
                         except (ArtifactError, VersionError) as err:
                             if self._is_released_GA(err.version or upgrade_from):
@@ -505,7 +528,7 @@ class ArtiCompute:
                         self.os_name, self.offline, auth=self.auth)
                 self._upgrade_snapshotprev = self._find_snapshot(
                     self._ring_upgradeprev_from, self.os_name,
-                    self.nb_nodes, self.suffix)
+                    self.nb_nodes, self.suffix, os_minor=self.os_minor)
         except (ArtifactError, VersionError):
             if 'upgradeprev' in self.jobs:
                 raise   # Problem only if upgradeprev job is requested
@@ -739,8 +762,16 @@ class ArtiCompute:
 
     @classmethod
     def _find_snapshot(cls, ring_installer, os_name, nb_nodes=3,
-                       architecture=None, snapshot_suffix=None, region=None):
-        """Find snapshot name from given RING installer URL"""
+                       architecture=None, snapshot_suffix=None, region=None,
+                       os_minor=None):
+        """Find snapshot name from given RING installer URL.
+
+        Snapshot selection is OS-minor aware (see _select_snapshot):
+          - os_minor set (e.g. '9.6'): pick the highest available minor that
+            is <= the requested minor, or None if none qualifies;
+          - os_minor None (major-only request): pick the highest available
+            minor.
+        """
         if not is_valid_os(os_name):
             raise ValueError(f"Unknown OS name '{os_name}'")
 
@@ -770,13 +801,16 @@ class ArtiCompute:
         if not architecture:
             architecture = ARCHITECTURE[0]
 
+        # Do NOT filter on os_version here: snapshots are tagged with their
+        # full OS version, which may be a bare major (e.g. "9") or a
+        # major.minor (e.g. "9.7"). We want every available minor so that
+        # _select_snapshot can pick the closest one <= the requested minor.
         # First try with architecture, if not found, try with nb_nodes
         for extra_filters in (('ring_architecture', architecture), ('nb_storage_server', str(nb_nodes))):
             snapshots = get_snapshots(
                 custom_filters=[
                     ('ring_version', ring_version),
                     ('os_name', name),
-                    ('os_version', version),
                     ('owner', 'ci'),
                     extra_filters,
                 ],
@@ -787,15 +821,54 @@ class ArtiCompute:
 
         if not snapshot_suffix:
             snapshot_suffix = DEFAULT_SUFFIX
-        reSnapshot = re.compile(rf'^RING-{ring_version}-.+?\[{snapshot_suffix}]$')
 
+        snapshot = cls._select_snapshot(
+            snapshots, ring_version, name, version, os_minor, snapshot_suffix)
+        if snapshot:
+            logger.debug(f"Found {os_name} snapshot {snapshot} for RING {ring_version}")
+        else:
+            logger.debug(f"No {os_name} snapshot found for RING {ring_version}")
+        return snapshot
+
+    @classmethod
+    def _select_snapshot(cls, snapshots, ring_version, os_family, os_major,
+                         os_minor, snapshot_suffix):
+        """Pick the best snapshot for the requested OS minor version.
+
+        Snapshot names look like:
+            RING-<ring_version>-<os_family><os_version>-<n>nodes[<suffix>]
+        where <os_version> is a major ("9") or major.minor ("9.7").
+
+        Selection rules for the requested OS (os_major[.os_minor]):
+          - os_minor given: choose the highest available minor that is
+            <= the requested minor; return None if none qualifies (never
+            pick a higher minor, i.e. never "downgrade" the request);
+          - os_minor None (major-only request): choose the highest
+            available minor.
+        A snapshot tagged with a bare major (no minor) is treated as
+        minor 0, so it stays eligible as a last-resort fallback.
+        """
+        reSnapshot = re.compile(
+            rf'^RING-{re.escape(ring_version)}-{re.escape(os_family)}'
+            rf'(?P<osver>\d+(?:\.\d+)?)-.+?\[{re.escape(snapshot_suffix)}]$')
+
+        target_major = int(os_major)
+        target_minor = int(os_minor.split('.')[1]) if os_minor else None
+
+        best = None     # (minor, name)
         for snapshot in snapshots:
-            if reSnapshot.match(snapshot):
-                logger.debug(f"Found {os_name} snapshot {snapshot} for RING {ring_version}")
-                return snapshot
-
-        logger.debug(f"No {os_name} snapshot found for RING {ring_version}")
-        return None
+            m = reSnapshot.match(snapshot)
+            if not m:
+                continue
+            osver = m.group('osver').split('.')
+            if int(osver[0]) != target_major:
+                continue
+            minor = int(osver[1]) if len(osver) > 1 else 0
+            if target_minor is not None and minor > target_minor:
+                continue    # never pick a higher minor than requested
+            if best is None or minor > best[0]:
+                best = (minor, snapshot)
+        return best[1] if best else None
 
     @classmethod
     def _find_adi_snapshot(cls, adi_version, nb_nodes=3,
@@ -1780,13 +1853,13 @@ def get_options():
     """Parse and return command line arguments."""
 
     def _fix_os_name(string):
-        """Fix RHEL name if needed, change OSmajor.minor to OSmajor"""
-        reMajorMinor = re.compile(r'^(\D+?\d+)(\.\d+)?$')
-        m = reMajorMinor.match(string)
-        if m:
-            string = m.group(1)
-        string = string.lower()
-        return string.replace('redhat', 'rhel')
+        """Normalize OS name: lowercase and map redhat->rhel.
+
+        The OS minor version (e.g. rhel9.6) is preserved: snapshot selection
+        needs it (see ArtiCompute._select_snapshot). Stripping to major-only
+        is done later, where a major-only name is required.
+        """
+        return string.lower().replace('redhat', 'rhel')
 
     def _check_version(string):
         """Check version format"""
@@ -1799,9 +1872,10 @@ def get_options():
         description='Compute artifact input data for installer tests workflow'
     )
     def _validate_os(os_name):
-        """Validate OS name, accepting scalityos variants"""
+        """Validate OS name, accepting scalityos variants and an OS minor"""
         os_name = _fix_os_name(os_name)
-        if not is_valid_os(os_name):
+        major_os, _ = _split_os_minor(os_name)
+        if not is_valid_os(major_os):
             raise argparse.ArgumentTypeError(
                 f"Invalid OS '{os_name}'."
             )
