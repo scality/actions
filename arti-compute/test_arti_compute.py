@@ -137,6 +137,20 @@ def _select(snapshots, os_minor, os_major="9", family="redhat", suffix=SUFFIX):
         snapshots, RING, family, os_major, os_minor, suffix)
 
 
+# OS tuple is built from _ring_major; assert each OS's membership against the
+# _ring_major resolved at import (testdata/VERSION via conftest.py) so this
+# stays correct whichever RING version the action is pinned to.
+@pytest.mark.parametrize("os_name,expected_present", [
+    ("rhel9", ac._ring_major > 8),
+    ("rocky9", ac._ring_major > 8),
+    ("scalityos", ac._ring_major > 9),
+    ("rhel8", ac._ring_major < 10),
+    ("rocky8", ac._ring_major < 10),
+])
+def test_os_tuple_gating(os_name, expected_present):
+    assert (os_name in ac.OS) is expected_present
+
+
 class TestSplitOsMinor:
     def test_with_minor(self):
         assert _split_os_minor("rhel9.6") == ("rhel9", "9.6")
