@@ -105,7 +105,7 @@ JOB_TYPE = ("install", "upgrade", "upgradeprev", "sbom")
 # RING previous version types
 VERSION_TYPE = ("stable", "current", "previous")
 
-_ring_major =  _get_ring_major()
+_ring_major = _get_ring_major()
 
 # NOTE: ADD_NEW_OS (do not remove)
 OS = ()
@@ -118,13 +118,16 @@ if _ring_major > 9:
 if _ring_major < 10:
     OS += ("rhel8", "rocky8")
 
-SCALITYOS_VERSION_REGEX= re.compile(
+# scalityos or scalityos-X.Y or scalityos-X.Y-N or scalityos-X.Y-N.build_id
+SCALITYOS_VERSION_REGEX = re.compile(
   r'^(?P<name>scalityos)(-(?P<ver>\d+[.]\d+(-\d+([.][a-f0-9]{8})?)?))?$'
-) # scalityos or scalityos-X.Y or scalityos-X.Y-N or scalityos-X.Y-N.build_id
+)
 
+# adi-X.Y.Z or adi-X.Y.Z.SHA or adi-X.Y.Z_pwN or adi-X.Y.Z_rcN
 ADI_OS_REGEX = re.compile(
   r'^(?P<name>adi)-(?P<ver>\d+\.\d+\.\d+([.][a-f0-9]+|_(rc|pw)\d+)?)$'
-) # adi-X.Y.Z or adi-X.Y.Z.SHA or adi-X.Y.Z_pwN or adi-X.Y.Z_rcN
+)
+
 
 def is_valid_os(os_name):
     """
@@ -140,6 +143,7 @@ def is_valid_os(os_name):
         return True
     logger.warning(f"Unknown OS name '{os_name}'")
     return False
+
 
 def is_scality_managed_os(os_name):
     """Check if OS is a Scality-managed image (scalityos or adi)"""
@@ -162,6 +166,7 @@ def _split_os_minor(os_name):
         return os_name, None
     major = re.search(r'\d+$', m.group('base')).group(0)
     return m.group('base'), f"{major}.{m.group('minor')}"
+
 
 # Architecture (1st one is the default)
 ARCHITECTURE = (
@@ -221,6 +226,7 @@ DEFAULT_SUFFIX = 'GA'
 # or OS+version combination is not supported
 UNSUPPORTED = "__UNSUPPORTED__"
 
+
 class ArtifactError(Exception):
     """Artifact related error"""
     def __init__(self, message, version=None):
@@ -273,7 +279,7 @@ def get_snapshots(region=None, custom_filters=None, filter_supervisor=True):
             filters.append({'Name': 'tag:' + tag, 'Values': [value]})
 
     # Set filter on supervisor
-    if filter_supervisor == True:
+    if filter_supervisor:
         filters.append({'Name': 'tag:type', 'Values': ['supervisor']})
 
     try:
@@ -781,7 +787,7 @@ class ArtiCompute:
             name = m.group('name')
             version = m.group('ver')
             if not version:
-                logger.warning(f"Snapshot not supported when a specific scalityos version is not provided")
+                logger.warning("Snapshot not supported when a specific scalityos version is not provided")
                 return None
         else:
             m = re.match(r'(?P<name>.+?)(?P<ver>\d+)', os_name)
@@ -789,7 +795,7 @@ class ArtiCompute:
             version = m.group('ver')
         ring_version = cls._get_ring_version(ring_installer)
 
-        msg =  [f"Searching {os_name} RING {ring_version} {nb_nodes} nodes snapshot" ]
+        msg = [f"Searching {os_name} RING {ring_version} {nb_nodes} nodes snapshot"]
         if architecture:
             msg.append(f"architecture={architecture}")
         if snapshot_suffix:
@@ -933,7 +939,7 @@ class ArtiCompute:
                 ring_os_name = f"{m.group('name')}_{m.group('ver')}"
             installer_suffix = f"{ring_os_name}.run"
             reRingInstaller = re.compile(rf'^scality-ring-.+?{installer_suffix}$')
-            reAnyInstaller = re.compile(rf'^scality-ring-.+?\.run$')
+            reAnyInstaller = re.compile(r'^scality-ring-.+?\.run$')
 
             response = requests.get(
                 os.path.join(base_url, 'installer', '?format=txt'),
@@ -1117,7 +1123,8 @@ class ArtiCompute:
         last_installer, _ = cls._find_ring_installer(
             os.path.join(build_url, last_stable), os_name, auth=auth)
         if last_installer is None:
-            raise ArtifactError(f"No RING installer found for '{last_stable}'", version=cls._get_ring_version(last_stable))
+            raise ArtifactError(f"No RING installer found for '{last_stable}'",
+                                version=cls._get_ring_version(last_stable))
         logger.debug(f"Found {os_name} last stable RING {last_stable} installer: {last_installer}")
         return last_installer
 
@@ -1165,7 +1172,8 @@ class ArtiCompute:
                 os.path.join(base_s3_url, buildid), os_name, offline, auth=auth)
             try:    # For error message...
                 s3_version = cls._get_s3_version(buildid)
-                logger.debug(f"Using {os_name} latest S3 {s3_version} installer {last_installer} (provided by {buildid})")
+                logger.debug(f"Using {os_name} latest S3 {s3_version} installer "
+                             f"{last_installer} (provided by {buildid})")
             except VersionError:
                 s3_version = ""
         else:
@@ -1199,10 +1207,10 @@ class ArtiCompute:
             else:
                 # Found nothing, search artifacts
                 latest_version = {
-                    'LAST' : None,
-                    'LAST_PW' : None,
-                    'LAST_RC' : None,
-                    'LAST_GA' : None,
+                    'LAST': None,
+                    'LAST_PW': None,
+                    'LAST_RC': None,
+                    'LAST_GA': None,
                 }
                 response = requests.get(
                     os.path.join(DEFAULT_ARTIFACT_URL, '?format=txt'),
@@ -1836,12 +1844,12 @@ class ArtiCompute:
                     and self.jobs[0] == 'upgradeprev'
                     and normalize):
                 print(file=outfile)
-                print(f"# ==== Normalize upgradeprev to upgrade", file=outfile)
-                print(f"UPGRADE_INSTALLER_RING=$UPGRADEPREV_INSTALLER_RING", file=outfile)
-                print(f"UPGRADE_INSTALLER_S3=$UPGRADEPREV_INSTALLER_S3", file=outfile)
-                print(f"UPGRADE_RING_VERSION=$UPGRADEPREV_RING_VERSION", file=outfile)
-                print(f"UPGRADE_S3_VERSION=$UPGRADEPREV_S3_VERSION", file=outfile)
-                print(f"UPGRADE_FROM_SNAPSHOT=$UPGRADEPREV_FROM_SNAPSHOT", file=outfile)
+                print("# ==== Normalize upgradeprev to upgrade", file=outfile)
+                print("UPGRADE_INSTALLER_RING=$UPGRADEPREV_INSTALLER_RING", file=outfile)
+                print("UPGRADE_INSTALLER_S3=$UPGRADEPREV_INSTALLER_S3", file=outfile)
+                print("UPGRADE_RING_VERSION=$UPGRADEPREV_RING_VERSION", file=outfile)
+                print("UPGRADE_S3_VERSION=$UPGRADEPREV_S3_VERSION", file=outfile)
+                print("UPGRADE_FROM_SNAPSHOT=$UPGRADEPREV_FROM_SNAPSHOT", file=outfile)
                 print("unset UPGRADEPREV_INSTALLER_RING", file=outfile)
                 print("unset UPGRADEPREV_INSTALLER_S3", file=outfile)
                 print("unset UPGRADEPREV_RING_VERSION", file=outfile)
@@ -1871,6 +1879,7 @@ def get_options():
     parser = argparse.ArgumentParser(
         description='Compute artifact input data for installer tests workflow'
     )
+
     def _validate_os(os_name):
         """Validate OS name, accepting scalityos variants and an OS minor"""
         os_name = _fix_os_name(os_name)
