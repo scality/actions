@@ -713,20 +713,22 @@ class ArtiCompute:
             if is_previous and from_version < [8, 0, 0, 0]:
                 raise Unsupported("Rocky8 upgradeprev only supported from 9.0.0.0")
         elif self.os_name == 'rhel9':
-            # RedHat9 can upgrade only after 9.3.0.0 and upgrade-prev after ??
+            # RedHat9 can upgrade only after 9.3.0.0
             if version < [9, 3, 0, 0]:
                 raise Unsupported("RHEL9 upgrade only supported from 9.3.0.0")
-            # if is_previous and from_version < [8, 0, 0, 0]:
-            #     raise UnsupportedUpgrade("RHEL8 upgradeprev only supported from 9.0.0.0")
-            if is_previous:
+            # upgradeprev on RING 9 targets RING 8, which has no RHEL9 image;
+            # from RING 10 the previous tech-train is 9.5.2 (RHEL9-capable),
+            # so upgradeprev is valid there.
+            if is_previous and version[0] < 10:
                 raise Unsupported("RHEL9 upgradeprev not supported")
         elif self.os_name == 'rocky9':
-            # Rocky9 can upgrade only after 9.4.0.0 and upgrade-prev after ??
+            # Rocky9 can upgrade only after 9.4.0.0
             if version < [9, 4, 0, 0]:
                 raise Unsupported("Rocky9 upgrade only supported from 9.4.0.0")
-            # if is_previous and from_version < [8, 0, 0, 0]:
-            #     raise UnsupportedUpgrade("Rocky8 upgradeprev only supported from 9.0.0.0")
-            if is_previous:
+            # upgradeprev on RING 9 targets RING 8, which has no Rocky9 image;
+            # from RING 10 the previous tech-train is 9.5.2 (Rocky9-capable),
+            # so upgradeprev is valid there.
+            if is_previous and version[0] < 10:
                 raise Unsupported("Rocky9 upgradeprev not supported")
         elif is_scality_managed_os(self.os_name):
             if from_version < [10, 0, 0, 0]:
