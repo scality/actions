@@ -1,14 +1,130 @@
-"""Unit tests for arti_compute OS-minor-aware snapshot selection (RING-54644)."""
+#!/usr/bin/env python3
+"""Pure unit tests for arti_compute.py: upgrade/upgradeprev support matrix,
+OS-tuple gating, and OS-minor-aware snapshot selection.
+
+Table-driven, no network / AWS / artifact lookups: instances are built with
+``__new__`` and only the attributes the tested helper reads are set, so
+``__init__`` never runs, and the snapshot selector is a pure classmethod called
+directly. Every OS, version and snapshot is passed explicitly, so the file
+is independent of the RING branch the script was taken from.
+"""
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(__file__))
 
-from arti_compute import ArtiCompute, _split_os_minor   # noqa: E402
+import arti_compute as ac                                # noqa: E402
+from arti_compute import ArtiCompute, _split_os_minor    # noqa: E402
 
 
 RING = "9.5.2.5"
 SUFFIX = "GA"
+
+
+def _ac(os_name, ring_version):
+    """Build a minimal ArtiCompute instance without running __init__."""
+    obj = ArtiCompute.__new__(ArtiCompute)
+    obj.os_name = os_name
+    obj._ring_installer = f"scality-ring-{ring_version}.run"
+    obj._adi_ring_version = None
+    return obj
+
+
+def _upgrade_supported(os_name, to_version, from_version, is_previous):
+    try:
+        _ac(os_name, to_version).is_valid_upgrade(
+            from_version, is_previous=is_previous)
+        return True
+    except ac.Unsupported:
+        return False
+
+
+# The workflow passes minor-qualified --os names (redhat8.10, redhat9.7, ...).
+# get_options._fix_os_name lowercases and maps redhat->rhel but keeps minor;
+# ArtiCompute.__init__ splits it (_split_os_minor) into a major-only os_name
+# used for the support decision and an os_minor used for snapshot selection. So
+# redhat9.7 and redhat9.8 resolve to rhel9 here; the raw --os input is kept
+# in the ``raw_os`` column; the decision uses the canonical major-only name.
+
+# (current_version, raw_os, canonical_os, upgrade_from, supported)
+# upgrade_from is what _get_precedent_major(..., 'stable') resolves to.
+# scalityos: the live upgrade FROM comes from the ADI manifest (that path is
+# skipped for scalityos in __init__); these rows assert the is_valid_upgrade
+# rule only.
+UPGRADE_MATRIX = [
+    ("8.5.12.0", "redhat8.10", "rhel8", "8.5.11", True),
+    ("8.5.12.0", "rocky8.10", "rocky8", "8.5.11", True),
+    ("8.5.13.0", "redhat8.10", "rhel8", "8.5.12", True),
+    ("8.5.13.0", "rocky8.10", "rocky8", "8.5.12", True),
+    ("9.5.2.0", "redhat8.10", "rhel8", "9.5.1", True),
+    ("9.5.2.0", "redhat9.7", "rhel9", "9.5.1", True),
+    ("9.5.2.0", "redhat9.8", "rhel9", "9.5.1", True),
+    ("9.5.2.0", "rocky8.10", "rocky8", "9.5.1", True),
+    ("9.5.2.0", "rocky9", "rocky9", "9.5.1", True),
+    ("9.5.3.0", "redhat8.10", "rhel8", "9.5.2", True),
+    ("9.5.3.0", "redhat9.7", "rhel9", "9.5.2", True),
+    ("9.5.3.0", "redhat9.8", "rhel9", "9.5.2", True),
+    ("9.5.3.0", "rocky8.10", "rocky8", "9.5.2", True),
+    ("9.5.3.0", "rocky9", "rocky9", "9.5.2", True),
+    ("10.0.0.0", "redhat9.7", "rhel9", "9", True),
+    ("10.0.0.0", "redhat9.8", "rhel9", "9", True),
+    ("10.0.0.0", "rocky9", "rocky9", "9", True),
+    ("10.0.0.0", "scalityos", "scalityos", "9", False),
+    ("10.1.0.0", "redhat9.7", "rhel9", "10.0", True),
+    ("10.1.0.0", "redhat9.8", "rhel9", "10.0", True),
+    ("10.1.0.0", "rocky9", "rocky9", "10.0", True),
+    ("10.1.0.0", "scalityos", "scalityos", "10.0", True),
+]
+
+# (current_version, raw_os, canonical_os, upgradeprev_from, supported)
+# upgradeprev_from is what _get_precedent_major(..., 'previous') resolves to
+# via TECH_TRAIN.
+# rhel9/rocky9 upgradeprev is refused for a RING 9 target (previous tech-train
+# is RING 8, no rhel9/rocky9 image) and allowed for RING >= 10 (previous
+# tech-train 9.5.2 is rhel9/rocky9-capable) — see RING-54645 (PR #7045).
+UPGRADEPREV_MATRIX = [
+    ("8.5.12.0", "redhat8.10", "rhel8", "7.4.10", False),
+    ("8.5.12.0", "rocky8.10", "rocky8", "7.4.10", False),
+    ("8.5.13.0", "redhat8.10", "rhel8", "7.4.10", False),
+    ("8.5.13.0", "rocky8.10", "rocky8", "7.4.10", False),
+    ("9.5.2.0", "redhat8.10", "rhel8", "8.5.12", True),
+    ("9.5.2.0", "redhat9.7", "rhel9", "8.5.12", False),
+    ("9.5.2.0", "redhat9.8", "rhel9", "8.5.12", False),
+    ("9.5.2.0", "rocky8.10", "rocky8", "8.5.12", True),
+    ("9.5.2.0", "rocky9", "rocky9", "8.5.12", False),
+    ("9.5.3.0", "redhat8.10", "rhel8", "8.5.12", True),
+    ("9.5.3.0", "redhat9.7", "rhel9", "8.5.12", False),
+    ("9.5.3.0", "redhat9.8", "rhel9", "8.5.12", False),
+    ("9.5.3.0", "rocky8.10", "rocky8", "8.5.12", True),
+    ("9.5.3.0", "rocky9", "rocky9", "8.5.12", False),
+    ("10.0.0.0", "redhat9.7", "rhel9", "9.5.2", True),
+    ("10.0.0.0", "redhat9.8", "rhel9", "9.5.2", True),
+    ("10.0.0.0", "rocky9", "rocky9", "9.5.2", True),
+    ("10.0.0.0", "scalityos", "scalityos", "9.5.2", False),
+    ("10.1.0.0", "redhat9.7", "rhel9", "9.5.2", True),
+    ("10.1.0.0", "redhat9.8", "rhel9", "9.5.2", True),
+    ("10.1.0.0", "rocky9", "rocky9", "9.5.2", True),
+    ("10.1.0.0", "scalityos", "scalityos", "9.5.2", False),
+]
+
+
+@pytest.mark.parametrize(
+    "current,raw_os,canonical,upgrade_from,supported", UPGRADE_MATRIX,
+    ids=[f"{c}-{o}" for c, o, _, _, _ in UPGRADE_MATRIX])
+def test_upgrade_matrix(current, raw_os, canonical, upgrade_from, supported):
+    assert _upgrade_supported(
+        canonical, current, upgrade_from, is_previous=False) is supported
+
+
+@pytest.mark.parametrize(
+    "current,raw_os,canonical,upgradeprev_from,supported", UPGRADEPREV_MATRIX,
+    ids=[f"{c}-{o}" for c, o, _, _, _ in UPGRADEPREV_MATRIX])
+def test_upgradeprev_matrix(current, raw_os, canonical, upgradeprev_from,
+                            supported):
+    assert _upgrade_supported(
+        canonical, current, upgradeprev_from, is_previous=True) is supported
 
 
 def _snap(osver, ring=RING, nodes=3, suffix=SUFFIX, family="redhat"):
