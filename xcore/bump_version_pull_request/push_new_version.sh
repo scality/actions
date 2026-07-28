@@ -11,7 +11,11 @@ GITHUB_ACTOR=$1
 REF=$2
 VERSION=$3
 NEW_VERSION=$4
-git fetch --all --unshallow
+git fetch --all
+# Unshallow only when the checkout is shallow (fails on full clones otherwise)
+if git rev-parse --is-shallow-repository 2>/dev/null | grep -qx true; then
+    git fetch --unshallow
+fi
 
 git checkout -b feature/bump_version_${NEW_VERSION} ${REF}
 

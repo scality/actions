@@ -1,0 +1,201 @@
+name: 'Arti Compute'
+description: >
+  Compute RING installer-test artifact URLs and versions (arti_compute).
+  Callers should check out the RING repository at the job workspace so VERSION
+  and git tags are available. Prefer version-file when VERSION is not at the
+  workspace root.
+
+# Caller typically needs:
+#   - RING checkout in GITHUB_WORKSPACE (or version-file pointing at VERSION)
+#   - ARTIFACTS basic auth via auth input
+#   - GITHUB_TOKEN (github-token) for ADI manifest lookups
+#   - AWS credentials in the job env for snapshot AMI discovery
+
+inputs:
+  os:
+    description: 'OS name (rhel8, rocky8, rhel9, rocky9, scalityos[-X.Y[-N]], adi-X.Y.Z...)'
+    required: false
+    default: ''
+  ring-artifact:
+    description: 'RING artifact build id'
+    required: false
+    default: ''
+  auth:
+    description: 'Artifacts credentials as username:password'
+    required: false
+    default: ''
+  job-type:
+    description: 'Space-separated job types (install, upgrade, upgradeprev, sbom)'
+    required: false
+    default: ''
+  s3-artifact:
+    description: 'Optional S3 / Federation artifact build id'
+    required: false
+    default: ''
+  adi-artifact:
+    description: 'Optional ADI artifact (scalityos)'
+    required: false
+    default: ''
+  adi-branch:
+    description: 'ADI git ref for manifest lookups'
+    required: false
+    default: ''
+  adi-upgrade-from:
+    description: 'ADI version to upgrade from (overrides manifest history)'
+    required: false
+    default: ''
+  upgrade-from:
+    description: 'RING version to upgrade from'
+    required: false
+    default: ''
+  ring-architecture:
+    description: 'RING architecture (default: script default)'
+    required: false
+    default: ''
+  ring-explicit:
+    description: 'Set to true when RING artifact was explicitly provided'
+    required: false
+    default: 'false'
+  normalize:
+    description: 'Normalize upgradeprev variables to upgrade'
+    required: false
+    default: 'false'
+  no-snapshots:
+    description: 'Disable snapshot use for upgrades'
+    required: false
+    default: 'false'
+  debug:
+    description: 'Enable debug logging'
+    required: false
+    default: 'false'
+  quiet:
+    description: 'Disable logging output'
+    required: false
+    default: 'false'
+  online:
+    description: 'Online mode (default is offline)'
+    required: false
+    default: 'false'
+  suffix:
+    description: 'Snapshot suffix (default GA)'
+    required: false
+    default: ''
+  region:
+    description: 'AWS region for snapshot lookup'
+    required: false
+    default: ''
+  check-tech-train:
+    description: >
+      If set, only validate TECH_TRAIN for this RING version (no artifact lookup).
+      Other required inputs can be omitted.
+    required: false
+    default: ''
+  output-file:
+    description: 'Write bash variables to this file (omit to print on stdout)'
+    required: false
+    default: ''
+  github-token:
+    description: 'Token for ADI GitHub API (manifest.yaml / manifest-history.yaml)'
+    required: false
+    default: ''
+  version-file:
+    description: 'Path to RING VERSION file (default: GITHUB_WORKSPACE/VERSION or cwd walk)'
+    required: false
+    default: ''
+  python-version:
+    description: 'Python version for setup-python'
+    required: false
+    default: '3.12'
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install dependencies
+      shell: bash
+      run: pip install -r "${{ github.action_path }}/requirements.txt"
+
+    - name: Run arti_compute
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        RING_VERSION_FILE: ${{ inputs.version-file }}
+      run: |
+        set -euo pipefail
+        ARGS=()
+
+        if [ -n "${{ inputs.version-file }}" ]; then
+          ARGS+=(--version-file "${{ inputs.version-file }}")
+        fi
+
+        if [ -n "${{ inputs.check-tech-train }}" ]; then
+          ARGS+=(--check-tech-train "${{ inputs.check-tech-train }}")
+          python3 "${{ github.action_path }}/arti_compute.py" "${ARGS[@]}"
+          exit 0
+        fi
+
+        if [ -z "${{ inputs.os }}" ] || [ -z "${{ inputs.ring-artifact }}" ] || [ -z "${{ inputs.auth }}" ]; then
+          echo "::error::os, ring-artifact, and auth are required unless check-tech-train is set"
+          exit 1
+        fi
+
+        ARGS+=(--os "${{ inputs.os }}")
+        ARGS+=(--ring-artifact "${{ inputs.ring-artifact }}")
+        ARGS+=(--auth "${{ inputs.auth }}")
+
+        if [ -n "${{ inputs.job-type }}" ]; then
+          # shellcheck disable=SC2206
+          JOB_TYPES=(${{ inputs.job-type }})
+          ARGS+=(--job-type "${JOB_TYPES[@]}")
+        fi
+        if [ -n "${{ inputs.s3-artifact }}" ]; then
+          ARGS+=(--s3-artifact "${{ inputs.s3-artifact }}")
+        fi
+        if [ -n "${{ inputs.adi-artifact }}" ]; then
+          ARGS+=(--adi-artifact "${{ inputs.adi-artifact }}")
+        fi
+        if [ -n "${{ inputs.adi-branch }}" ]; then
+          ARGS+=(--adi-branch "${{ inputs.adi-branch }}")
+        fi
+        if [ -n "${{ inputs.adi-upgrade-from }}" ]; then
+          ARGS+=(--adi-upgrade-from "${{ inputs.adi-upgrade-from }}")
+        fi
+        if [ -n "${{ inputs.upgrade-from }}" ]; then
+          ARGS+=(--upgrade-from "${{ inputs.upgrade-from }}")
+        fi
+        if [ -n "${{ inputs.ring-architecture }}" ]; then
+          ARGS+=(--ring-architecture "${{ inputs.ring-architecture }}")
+        fi
+        if [ "${{ inputs.ring-explicit }}" = "true" ]; then
+          ARGS+=(--ring-explicit)
+        fi
+        if [ "${{ inputs.normalize }}" = "true" ]; then
+          ARGS+=(--normalize)
+        fi
+        if [ "${{ inputs.no-snapshots }}" = "true" ]; then
+          ARGS+=(--no-snapshots)
+        fi
+        if [ "${{ inputs.debug }}" = "true" ]; then
+          ARGS+=(--debug)
+        fi
+        if [ "${{ inputs.quiet }}" = "true" ]; then
+          ARGS+=(--quiet)
+        fi
+        if [ "${{ inputs.online }}" = "true" ]; then
+          ARGS+=(--online)
+        fi
+        if [ -n "${{ inputs.suffix }}" ]; then
+          ARGS+=(--suffix "${{ inputs.suffix }}")
+        fi
+        if [ -n "${{ inputs.region }}" ]; then
+          ARGS+=(--region "${{ inputs.region }}")
+        fi
+        if [ -n "${{ inputs.output-file }}" ]; then
+          ARGS+=(--output-file "${{ inputs.output-file }}")
+        fi
+
+        python3 "${{ github.action_path }}/arti_compute.py" "${ARGS[@]}"

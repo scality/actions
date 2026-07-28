@@ -1,7 +1,10 @@
 name: 'Test Bump version'
 
 on:
-  push
+  push:
+    paths:
+      - 'xcore/bump_version_pull_request/**'
+      - '.github/workflows/bump_version.yaml'
 
 jobs:
   test:
@@ -13,18 +16,15 @@ jobs:
       - name: create fake version file
         run: |
           echo "VERSION=1.2.3" > VERSION
-      - name: Check the feature branch does not exists
+      - name: Ensure leftover bump branch is removed
         env:
           BUMP_BRANCH: feature/bump_version_1.2.4
         run: |
-          # disable error as grep return 1 if nothing is found
           set +e
-          res=$(git branch --list --all | grep ${BUMP_BRANCH})
+          git branch -D "${BUMP_BRANCH}" 2>/dev/null
+          git push --delete origin "${BUMP_BRANCH}" 2>/dev/null
           set -e
-          if [[ "${res}" != "" ]]; then
-            git branch -D ${BUMP_BRANCH}
-            git push --delete origin ${BUMP_BRANCH}
-          fi
+          echo "Leftover branch cleanup done (ignore delete errors if branch was absent)"
 
       - uses: ./xcore/bump_version_pull_request
         id: pull-request
@@ -35,7 +35,7 @@ jobs:
         run: |
           gh pr view ${{ steps.pull-request.outputs.pull-request-url }}
       - name: close pr
-        if: always()
+        if: always() && steps.pull-request.outputs.pull-request-url != ''
         run: |
           # fetch latest git info first
           git fetch --all

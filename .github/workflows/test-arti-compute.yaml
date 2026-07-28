@@ -1,0 +1,78 @@
+name: Test Arti Compute Action
+
+on:
+  push:
+    paths:
+      - 'arti-compute/**'
+      - '.github/workflows/test-arti-compute.yaml'
+  pull_request:
+    paths:
+      - 'arti-compute/**'
+      - '.github/workflows/test-arti-compute.yaml'
+
+jobs:
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r arti-compute/requirements-dev.txt
+
+      - name: Run pytest
+        run: python -m pytest arti-compute/test_arti_compute.py -v
+
+  lint:
+    name: flake8
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install flake8
+        run: pip install flake8
+
+      - name: Run flake8
+        working-directory: arti-compute
+        run: python -m flake8 .
+
+  check-tech-train:
+    name: Smoke check-tech-train
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Valid TECH_TRAIN entry
+        uses: ./arti-compute
+        with:
+          check-tech-train: '10.1.0.0'
+          version-file: ${{ github.workspace }}/arti-compute/testdata/VERSION
+
+      - name: Missing TECH_TRAIN entry should fail
+        id: missing-key
+        continue-on-error: true
+        uses: ./arti-compute
+        with:
+          check-tech-train: '10.9.0.0'
+          version-file: ${{ github.workspace }}/arti-compute/testdata/VERSION
+
+      - name: Assert missing key failed
+        shell: bash
+        run: |
+          if [ "${{ steps.missing-key.outcome }}" != "failure" ]; then
+            echo "Expected check-tech-train for 10.9.0.0 to fail"
+            exit 1
+          fi
