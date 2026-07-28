@@ -1,1 +1,4 @@
 * @scality/platform-eng
+
+/arti-compute/ @scality/supsetup
+/.github/workflows/test-arti-compute.yaml @scality/supsetup

@@ -105,7 +105,7 @@ JOB_TYPE = ("install", "upgrade", "upgradeprev", "sbom")
 # RING previous version types
 VERSION_TYPE = ("stable", "current", "previous")
 
-_ring_major =  _get_ring_major()
+_ring_major = _get_ring_major()
 
 # NOTE: ADD_NEW_OS (do not remove)
 OS = ()
@@ -118,13 +118,16 @@ if _ring_major > 9:
 if _ring_major < 10:
     OS += ("rhel8", "rocky8")
 
-SCALITYOS_VERSION_REGEX= re.compile(
+# scalityos or scalityos-X.Y or scalityos-X.Y-N or scalityos-X.Y-N.build_id
+SCALITYOS_VERSION_REGEX = re.compile(
   r'^(?P<name>scalityos)(-(?P<ver>\d+[.]\d+(-\d+([.][a-f0-9]{8})?)?))?$'
-) # scalityos or scalityos-X.Y or scalityos-X.Y-N or scalityos-X.Y-N.build_id
+)
 
+# adi-X.Y.Z or adi-X.Y.Z.SHA or adi-X.Y.Z_pwN or adi-X.Y.Z_rcN
 ADI_OS_REGEX = re.compile(
   r'^(?P<name>adi)-(?P<ver>\d+\.\d+\.\d+([.][a-f0-9]+|_(rc|pw)\d+)?)$'
-) # adi-X.Y.Z or adi-X.Y.Z.SHA or adi-X.Y.Z_pwN or adi-X.Y.Z_rcN
+)
+
 
 def is_valid_os(os_name):
     """
@@ -141,9 +144,29 @@ def is_valid_os(os_name):
     logger.warning(f"Unknown OS name '{os_name}'")
     return False
 
+
 def is_scality_managed_os(os_name):
     """Check if OS is a Scality-managed image (scalityos or adi)"""
     return bool(SCALITYOS_VERSION_REGEX.match(os_name) or ADI_OS_REGEX.match(os_name))
+
+
+def _split_os_minor(os_name):
+    """Split an OS name into its major-only form and optional minor version.
+
+    Examples:
+        rhel9.6 -> ('rhel9', '9.6')
+        rhel9   -> ('rhel9', None)
+        rocky9  -> ('rocky9', None)
+    scalityos/adi names are returned unchanged, with no minor.
+    """
+    if is_scality_managed_os(os_name):
+        return os_name, None
+    m = re.match(r'^(?P<base>[a-zA-Z]+\d+)\.(?P<minor>\d+)$', os_name)
+    if not m:
+        return os_name, None
+    major = re.search(r'\d+$', m.group('base')).group(0)
+    return m.group('base'), f"{major}.{m.group('minor')}"
+
 
 # Architecture (1st one is the default)
 ARCHITECTURE = (
@@ -180,6 +203,7 @@ TECH_TRAIN = {
     'previous-9.5.1': '8.5.12',
     'previous-9.5.2': '8.5.12',
     'previous-9.5.3': '8.5.12',
+    'previous-9.5.4': '8.5.12',
 
     'previous-10.0.0': '9.5.2',
     'previous-10.1.0': '9.5.2',
@@ -201,6 +225,7 @@ DEFAULT_SUFFIX = 'GA'
 # Replaces installers and snapshots when upgrade
 # or OS+version combination is not supported
 UNSUPPORTED = "__UNSUPPORTED__"
+
 
 class ArtifactError(Exception):
     """Artifact related error"""
@@ -254,7 +279,7 @@ def get_snapshots(region=None, custom_filters=None, filter_supervisor=True):
             filters.append({'Name': 'tag:' + tag, 'Values': [value]})
 
     # Set filter on supervisor
-    if filter_supervisor == True:
+    if filter_supervisor:
         filters.append({'Name': 'tag:type', 'Values': ['supervisor']})
 
     try:
@@ -280,6 +305,10 @@ class ArtiCompute:
                  upgrade_from_version=None, architecture=ARCHITECTURE[0], suffix=None, region=None,
                  adi_artifact=None, github_token=None, ring_explicit=False,
                  adi_upgrade_from_version=None, adi_branch=None):
+        # Accept an optional OS minor (e.g. rhel9.6): keep os_name major-only
+        # for installer/S3/validity logic, and remember the minor so snapshot
+        # selection can pick the closest matching minor (see _select_snapshot).
+        os_name, self.os_minor = _split_os_minor(os_name)
         if not is_valid_os(os_name):
             raise ValueError(f"Unknown OS name '{os_name}'")
 
@@ -436,7 +465,7 @@ class ArtiCompute:
                         self.os_name, self.offline, auth=self.auth)
                     self._upgrade_snapshot = self._find_snapshot(
                         self._ring_upgrade_from, self.os_name,
-                        self.nb_nodes, self.suffix)
+                        self.nb_nodes, self.suffix, os_minor=self.os_minor)
                 except (ArtifactError, VersionError):
                     if 'upgrade' in self.jobs:
                         raise
@@ -462,7 +491,8 @@ class ArtiCompute:
                                 ring_installer=self._ring_upgrade_from,
                                 os_name=self.os_name,
                                 nb_nodes=self.nb_nodes,
-                                snapshot_suffix=self.suffix)
+                                snapshot_suffix=self.suffix,
+                                os_minor=self.os_minor)
                             break
                         except (ArtifactError, VersionError) as err:
                             if self._is_released_GA(err.version or upgrade_from):
@@ -504,7 +534,7 @@ class ArtiCompute:
                         self.os_name, self.offline, auth=self.auth)
                 self._upgrade_snapshotprev = self._find_snapshot(
                     self._ring_upgradeprev_from, self.os_name,
-                    self.nb_nodes, self.suffix)
+                    self.nb_nodes, self.suffix, os_minor=self.os_minor)
         except (ArtifactError, VersionError):
             if 'upgradeprev' in self.jobs:
                 raise   # Problem only if upgradeprev job is requested
@@ -713,20 +743,22 @@ class ArtiCompute:
             if is_previous and from_version < [8, 0, 0, 0]:
                 raise Unsupported("Rocky8 upgradeprev only supported from 9.0.0.0")
         elif self.os_name == 'rhel9':
-            # RedHat9 can upgrade only after 9.3.0.0 and upgrade-prev after ??
+            # RedHat9 can upgrade only after 9.3.0.0
             if version < [9, 3, 0, 0]:
                 raise Unsupported("RHEL9 upgrade only supported from 9.3.0.0")
-            # if is_previous and from_version < [8, 0, 0, 0]:
-            #     raise UnsupportedUpgrade("RHEL8 upgradeprev only supported from 9.0.0.0")
-            if is_previous:
+            # upgradeprev on RING 9 targets RING 8, which has no RHEL9 image;
+            # from RING 10 the previous tech-train is 9.5.2 (RHEL9-capable),
+            # so upgradeprev is valid there.
+            if is_previous and version[0] < 10:
                 raise Unsupported("RHEL9 upgradeprev not supported")
         elif self.os_name == 'rocky9':
-            # Rocky9 can upgrade only after 9.4.0.0 and upgrade-prev after ??
+            # Rocky9 can upgrade only after 9.4.0.0
             if version < [9, 4, 0, 0]:
                 raise Unsupported("Rocky9 upgrade only supported from 9.4.0.0")
-            # if is_previous and from_version < [8, 0, 0, 0]:
-            #     raise UnsupportedUpgrade("Rocky8 upgradeprev only supported from 9.0.0.0")
-            if is_previous:
+            # upgradeprev on RING 9 targets RING 8, which has no Rocky9 image;
+            # from RING 10 the previous tech-train is 9.5.2 (Rocky9-capable),
+            # so upgradeprev is valid there.
+            if is_previous and version[0] < 10:
                 raise Unsupported("Rocky9 upgradeprev not supported")
         elif is_scality_managed_os(self.os_name):
             if from_version < [10, 0, 0, 0]:
@@ -736,8 +768,16 @@ class ArtiCompute:
 
     @classmethod
     def _find_snapshot(cls, ring_installer, os_name, nb_nodes=3,
-                       architecture=None, snapshot_suffix=None, region=None):
-        """Find snapshot name from given RING installer URL"""
+                       architecture=None, snapshot_suffix=None, region=None,
+                       os_minor=None):
+        """Find snapshot name from given RING installer URL.
+
+        Snapshot selection is OS-minor aware (see _select_snapshot):
+          - os_minor set (e.g. '9.6'): pick the highest available minor that
+            is <= the requested minor, or None if none qualifies;
+          - os_minor None (major-only request): pick the highest available
+            minor.
+        """
         if not is_valid_os(os_name):
             raise ValueError(f"Unknown OS name '{os_name}'")
 
@@ -747,7 +787,7 @@ class ArtiCompute:
             name = m.group('name')
             version = m.group('ver')
             if not version:
-                logger.warning(f"Snapshot not supported when a specific scalityos version is not provided")
+                logger.warning("Snapshot not supported when a specific scalityos version is not provided")
                 return None
         else:
             m = re.match(r'(?P<name>.+?)(?P<ver>\d+)', os_name)
@@ -755,7 +795,7 @@ class ArtiCompute:
             version = m.group('ver')
         ring_version = cls._get_ring_version(ring_installer)
 
-        msg =  [f"Searching {os_name} RING {ring_version} {nb_nodes} nodes snapshot" ]
+        msg = [f"Searching {os_name} RING {ring_version} {nb_nodes} nodes snapshot"]
         if architecture:
             msg.append(f"architecture={architecture}")
         if snapshot_suffix:
@@ -767,13 +807,16 @@ class ArtiCompute:
         if not architecture:
             architecture = ARCHITECTURE[0]
 
+        # Do NOT filter on os_version here: snapshots are tagged with their
+        # full OS version, which may be a bare major (e.g. "9") or a
+        # major.minor (e.g. "9.7"). We want every available minor so that
+        # _select_snapshot can pick the closest one <= the requested minor.
         # First try with architecture, if not found, try with nb_nodes
         for extra_filters in (('ring_architecture', architecture), ('nb_storage_server', str(nb_nodes))):
             snapshots = get_snapshots(
                 custom_filters=[
                     ('ring_version', ring_version),
                     ('os_name', name),
-                    ('os_version', version),
                     ('owner', 'ci'),
                     extra_filters,
                 ],
@@ -784,15 +827,54 @@ class ArtiCompute:
 
         if not snapshot_suffix:
             snapshot_suffix = DEFAULT_SUFFIX
-        reSnapshot = re.compile(rf'^RING-{ring_version}-.+?\[{snapshot_suffix}]$')
 
+        snapshot = cls._select_snapshot(
+            snapshots, ring_version, name, version, os_minor, snapshot_suffix)
+        if snapshot:
+            logger.debug(f"Found {os_name} snapshot {snapshot} for RING {ring_version}")
+        else:
+            logger.debug(f"No {os_name} snapshot found for RING {ring_version}")
+        return snapshot
+
+    @classmethod
+    def _select_snapshot(cls, snapshots, ring_version, os_family, os_major,
+                         os_minor, snapshot_suffix):
+        """Pick the best snapshot for the requested OS minor version.
+
+        Snapshot names look like:
+            RING-<ring_version>-<os_family><os_version>-<n>nodes[<suffix>]
+        where <os_version> is a major ("9") or major.minor ("9.7").
+
+        Selection rules for the requested OS (os_major[.os_minor]):
+          - os_minor given: choose the highest available minor that is
+            <= the requested minor; return None if none qualifies (never
+            pick a higher minor, i.e. never "downgrade" the request);
+          - os_minor None (major-only request): choose the highest
+            available minor.
+        A snapshot tagged with a bare major (no minor) is treated as
+        minor 0, so it stays eligible as a last-resort fallback.
+        """
+        reSnapshot = re.compile(
+            rf'^RING-{re.escape(ring_version)}-{re.escape(os_family)}'
+            rf'(?P<osver>\d+(?:\.\d+)?)-.+?\[{re.escape(snapshot_suffix)}]$')
+
+        target_major = int(os_major)
+        target_minor = int(os_minor.split('.')[1]) if os_minor else None
+
+        best = None     # (minor, name)
         for snapshot in snapshots:
-            if reSnapshot.match(snapshot):
-                logger.debug(f"Found {os_name} snapshot {snapshot} for RING {ring_version}")
-                return snapshot
-
-        logger.debug(f"No {os_name} snapshot found for RING {ring_version}")
-        return None
+            m = reSnapshot.match(snapshot)
+            if not m:
+                continue
+            osver = m.group('osver').split('.')
+            if int(osver[0]) != target_major:
+                continue
+            minor = int(osver[1]) if len(osver) > 1 else 0
+            if target_minor is not None and minor > target_minor:
+                continue    # never pick a higher minor than requested
+            if best is None or minor > best[0]:
+                best = (minor, snapshot)
+        return best[1] if best else None
 
     @classmethod
     def _find_adi_snapshot(cls, adi_version, nb_nodes=3,
@@ -857,7 +939,7 @@ class ArtiCompute:
                 ring_os_name = f"{m.group('name')}_{m.group('ver')}"
             installer_suffix = f"{ring_os_name}.run"
             reRingInstaller = re.compile(rf'^scality-ring-.+?{installer_suffix}$')
-            reAnyInstaller = re.compile(rf'^scality-ring-.+?\.run$')
+            reAnyInstaller = re.compile(r'^scality-ring-.+?\.run$')
 
             response = requests.get(
                 os.path.join(base_url, 'installer', '?format=txt'),
@@ -1041,7 +1123,8 @@ class ArtiCompute:
         last_installer, _ = cls._find_ring_installer(
             os.path.join(build_url, last_stable), os_name, auth=auth)
         if last_installer is None:
-            raise ArtifactError(f"No RING installer found for '{last_stable}'", version=cls._get_ring_version(last_stable))
+            raise ArtifactError(f"No RING installer found for '{last_stable}'",
+                                version=cls._get_ring_version(last_stable))
         logger.debug(f"Found {os_name} last stable RING {last_stable} installer: {last_installer}")
         return last_installer
 
@@ -1089,7 +1172,8 @@ class ArtiCompute:
                 os.path.join(base_s3_url, buildid), os_name, offline, auth=auth)
             try:    # For error message...
                 s3_version = cls._get_s3_version(buildid)
-                logger.debug(f"Using {os_name} latest S3 {s3_version} installer {last_installer} (provided by {buildid})")
+                logger.debug(f"Using {os_name} latest S3 {s3_version} installer "
+                             f"{last_installer} (provided by {buildid})")
             except VersionError:
                 s3_version = ""
         else:
@@ -1123,10 +1207,10 @@ class ArtiCompute:
             else:
                 # Found nothing, search artifacts
                 latest_version = {
-                    'LAST' : None,
-                    'LAST_PW' : None,
-                    'LAST_RC' : None,
-                    'LAST_GA' : None,
+                    'LAST': None,
+                    'LAST_PW': None,
+                    'LAST_RC': None,
+                    'LAST_GA': None,
                 }
                 response = requests.get(
                     os.path.join(DEFAULT_ARTIFACT_URL, '?format=txt'),
@@ -1135,13 +1219,13 @@ class ArtiCompute:
                 if not response.ok:
                     raise ArtifactError(f"_find_latest_s3_installer(): {response.reason} ({response.status_code})")
                 reS3Version = re.compile(
-                    rf'github:scality:[fF]ederation:staging-{s3_version}([.](\d+[.]?){0,3})?.+[.]build[.].+$')
+                    rf'github:scality:[fF]ederation:staging-{s3_version}([.](\d+[.]?){{0,3}})?.+[.]build[.].+$')
                 reS3VersionGA = re.compile(
-                    rf'github:scality:[fF]ederation:promoted-{s3_version}([.](\d+[.]?){0,3})?/$')
+                    rf'github:scality:[fF]ederation:promoted-{s3_version}([.](\d+[.]?){{0,3}})?/$')
                 reS3VersionRC = re.compile(
-                    rf'github:scality:[fF]ederation:promoted-{s3_version}([.](\d+[.]?){0,3})?_rc.+$')
+                    rf'github:scality:[fF]ederation:promoted-{s3_version}([.](\d+[.]?){{0,3}})?_rc.+$')
                 reS3VersionPW = re.compile(
-                    rf'github:scality:[fF]ederation:promoted-{s3_version}([.](\d+[.]?){0,3})?_pw.+$')
+                    rf'github:scality:[fF]ederation:promoted-{s3_version}([.](\d+[.]?){{0,3}})?_pw.+$')
                 for line in response.text.splitlines():
                     if reS3Version.match(line):
                         latest_version['LAST'] = line
@@ -1760,12 +1844,12 @@ class ArtiCompute:
                     and self.jobs[0] == 'upgradeprev'
                     and normalize):
                 print(file=outfile)
-                print(f"# ==== Normalize upgradeprev to upgrade", file=outfile)
-                print(f"UPGRADE_INSTALLER_RING=$UPGRADEPREV_INSTALLER_RING", file=outfile)
-                print(f"UPGRADE_INSTALLER_S3=$UPGRADEPREV_INSTALLER_S3", file=outfile)
-                print(f"UPGRADE_RING_VERSION=$UPGRADEPREV_RING_VERSION", file=outfile)
-                print(f"UPGRADE_S3_VERSION=$UPGRADEPREV_S3_VERSION", file=outfile)
-                print(f"UPGRADE_FROM_SNAPSHOT=$UPGRADEPREV_FROM_SNAPSHOT", file=outfile)
+                print("# ==== Normalize upgradeprev to upgrade", file=outfile)
+                print("UPGRADE_INSTALLER_RING=$UPGRADEPREV_INSTALLER_RING", file=outfile)
+                print("UPGRADE_INSTALLER_S3=$UPGRADEPREV_INSTALLER_S3", file=outfile)
+                print("UPGRADE_RING_VERSION=$UPGRADEPREV_RING_VERSION", file=outfile)
+                print("UPGRADE_S3_VERSION=$UPGRADEPREV_S3_VERSION", file=outfile)
+                print("UPGRADE_FROM_SNAPSHOT=$UPGRADEPREV_FROM_SNAPSHOT", file=outfile)
                 print("unset UPGRADEPREV_INSTALLER_RING", file=outfile)
                 print("unset UPGRADEPREV_INSTALLER_S3", file=outfile)
                 print("unset UPGRADEPREV_RING_VERSION", file=outfile)
@@ -1777,13 +1861,13 @@ def get_options():
     """Parse and return command line arguments."""
 
     def _fix_os_name(string):
-        """Fix RHEL name if needed, change OSmajor.minor to OSmajor"""
-        reMajorMinor = re.compile(r'^(\D+?\d+)(\.\d+)?$')
-        m = reMajorMinor.match(string)
-        if m:
-            string = m.group(1)
-        string = string.lower()
-        return string.replace('redhat', 'rhel')
+        """Normalize OS name: lowercase and map redhat->rhel.
+
+        The OS minor version (e.g. rhel9.6) is preserved: snapshot selection
+        needs it (see ArtiCompute._select_snapshot). Stripping to major-only
+        is done later, where a major-only name is required.
+        """
+        return string.lower().replace('redhat', 'rhel')
 
     def _check_version(string):
         """Check version format"""
@@ -1795,10 +1879,12 @@ def get_options():
     parser = argparse.ArgumentParser(
         description='Compute artifact input data for installer tests workflow'
     )
+
     def _validate_os(os_name):
-        """Validate OS name, accepting scalityos variants"""
+        """Validate OS name, accepting scalityos variants and an OS minor"""
         os_name = _fix_os_name(os_name)
-        if not is_valid_os(os_name):
+        major_os, _ = _split_os_minor(os_name)
+        if not is_valid_os(major_os):
             raise argparse.ArgumentTypeError(
                 f"Invalid OS '{os_name}'."
             )
