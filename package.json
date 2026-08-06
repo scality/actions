@@ -1,0 +1,33 @@
+{
+  "name": "@scality-actions/index",
+  "version": "1.0.0",
+  "description": "Collection of Scality re-usable GitHub Actions written with Typescript.",
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "format": "npm run format --workspaces",
+    "format-check": "npm run format-check --workspaces",
+    "lint": "npm run lint --workspaces",
+    "package": "npm run package --workspaces",
+    "test": "npm run test --workspaces",
+    "all": "npm run all --workspaces"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scality/actions.git"
+  },
+  "keywords": [
+    "github-actions",
+    "actions",
+    "scality",
+    "typescript"
+  ],
+  "author": "Scality",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/scality/actions/issues"
+  },
+  "homepage": "https://github.com/scality/actions#readme",
+  "workspaces": [
+    "infra"
+  ]
+}

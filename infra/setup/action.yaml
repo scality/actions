@@ -1,0 +1,33 @@
+name: 'setup'
+description: Setup tooling for spawning cloud infrastructure
+
+inputs:
+  cloud:
+    description: >-
+      The cloud provider to use (available: openstack)
+    type: string
+    required: true
+  stack-name:
+    description: The name of the stack to create or select
+    type: string
+    required: true
+
+  source-dir:
+    description: The directory in which Pulumi projects exist (as subdirectories)
+    type: string
+    required: false
+    default: ${{ github.workspace }}/infra/pulumi
+  pulumi-version:
+    description: >-
+      The version of Pulumi to install (leave empty to use the same version as other
+      actions under scality/actions/infra).
+    type: string
+    required: false
+
+outputs:
+  workdir:
+    description: The working directory used by Pulumi
+
+runs:
+  using: 'node16'
+  main: './dist/index.js'
