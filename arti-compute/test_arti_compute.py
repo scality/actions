@@ -236,3 +236,124 @@ def test_select_snapshot(snapshots, ring_version, family, major, minor, suffix,
                          expected):
     assert ArtiCompute._select_snapshot(
         snapshots, ring_version, family, major, minor, suffix) == expected
+
+
+# Install thresholds (is_valid): lowest supported RING version per OS.
+INSTALL_THRESHOLDS = [
+    ("rhel8", "8.5.1.0", False),
+    ("rhel8", "8.5.2.0", True),
+    ("rocky8", "8.5.3.0", False),
+    ("rocky8", "8.5.4.0", True),
+    ("rhel9", "9.2.0.0", False),
+    ("rhel9", "9.3.0.0", True),
+    ("rocky9", "9.3.0.0", False),
+    ("rocky9", "9.4.0.0", True),
+    ("scalityos", "9.5.0.0", False),
+    ("scalityos", "10.0.0.0", True),
+]
+
+
+@pytest.mark.parametrize("os_name,version,supported", INSTALL_THRESHOLDS,
+                         ids=[f"{o}-{v}" for o, v, _ in INSTALL_THRESHOLDS])
+def test_install_thresholds(os_name, version, supported):
+    obj = _ac(os_name, version)
+    if supported:
+        obj.is_valid(os_name, version)
+    else:
+        with pytest.raises(ac.Unsupported):
+            obj.is_valid(os_name, version)
+
+
+# Upgrade target thresholds: lowest target version each OS may upgrade to.
+# FROM equals the target so FROM stays valid and only the target is tested.
+UPGRADE_TARGET_THRESHOLDS = [
+    ("rhel8", "8.5.2.0", False),
+    ("rhel8", "8.5.3.0", True),
+    ("rocky8", "8.5.3.0", False),
+    ("rocky8", "8.5.4.0", True),
+    ("rhel9", "9.2.0.0", False),
+    ("rhel9", "9.3.0.0", True),
+    ("rocky9", "9.3.0.0", False),
+    ("rocky9", "9.4.0.0", True),
+]
+
+
+@pytest.mark.parametrize("os_name,to_version,supported", UPGRADE_TARGET_THRESHOLDS,
+                         ids=[f"{o}-{v}" for o, v, _ in UPGRADE_TARGET_THRESHOLDS])
+def test_upgrade_target_thresholds(os_name, to_version, supported):
+    assert _upgrade_supported(
+        os_name, to_version, to_version, is_previous=False) is supported
+
+
+def test_upgrade_target_below_ring8_unsupported():
+    assert _upgrade_supported(
+        "rhel8", "7.4.10.0", "7.4.9", is_previous=False) is False
+
+
+# rhel8/rocky8 upgradeprev FROM threshold. NOTE: the code cutoff is 8.0.0.0
+# (the message text says "9.0.0.0"); FROM below RING 8 is refused, RING 8+ ok.
+@pytest.mark.parametrize("os_name", ["rhel8", "rocky8"])
+@pytest.mark.parametrize("from_version,supported", [
+    ("7.4.10", False),
+    ("8.0.0.0", True),
+    ("9.0.0.0", True),
+])
+def test_rhel8_rocky8_upgradeprev_from_threshold(os_name, from_version,
+                                                 supported):
+    # Target 9.5.3.0 keeps the target threshold satisfied for both OSes.
+    assert _upgrade_supported(
+        os_name, "9.5.3.0", from_version, is_previous=True) is supported
+
+
+# scalityos is_valid_upgrade rule (live FROM is manifest-driven, not tested):
+# upgrade needs FROM >= 10.0.0.0; upgradeprev is always refused.
+@pytest.mark.parametrize("from_version,is_previous,supported", [
+    ("9.5.2.0", False, False),
+    ("10.0.0.0", False, True),
+    ("10.0.0.0", True, False),
+    ("9.5.2.0", True, False),
+])
+def test_scalityos_upgrade_rule(from_version, is_previous, supported):
+    assert _upgrade_supported(
+        "scalityos", "10.1.0.0", from_version, is_previous) is supported
+
+
+# _get_precedent_major, 'stable': precedent in the same tech-train (decrement
+# after dropping trailing zeros).
+@pytest.mark.parametrize("from_string,expected", [
+    ("scality-ring-8.5.13.0.run", "8.5.12"),
+    ("scality-ring-8.5.12.0.run", "8.5.11"),
+    ("scality-ring-9.5.3.0.run", "9.5.2"),
+    ("scality-ring-9.5.2.0.run", "9.5.1"),
+    ("scality-ring-10.1.0.0.run", "10.0"),
+    ("scality-ring-10.0.0.0.run", "9"),
+    ("10.0.0.1", "10.0.0.0"),
+])
+def test_get_precedent_major_stable(from_string, expected):
+    assert ArtiCompute._get_precedent_major(
+        from_string, version_type="stable") == expected
+
+
+# _get_precedent_major, 'previous': previous tech-train via TECH_TRAIN.
+@pytest.mark.parametrize("from_string,expected", [
+    ("scality-ring-8.5.13.0.run", "7.4.10"),
+    ("scality-ring-9.5.3.0.run", "8.5.12"),
+    ("scality-ring-9.5.4.0.run", "8.5.12"),
+    ("scality-ring-10.1.0.0.run", "9.5.2"),
+    ("scality-ring-10.0.0.0.run", "9.5.2"),
+])
+def test_get_precedent_major_previous(from_string, expected):
+    assert ArtiCompute._get_precedent_major(
+        from_string, version_type="previous") == expected
+
+
+# TECH_TRAIN must have an entry for each active current version.
+@pytest.mark.parametrize("current", ["8.5.13", "9.5.4", "10.1.0"])
+def test_tech_train_has_key_for_current_versions(current):
+    assert f"previous-{current}" in ac.TECH_TRAIN
+
+
+def test_tech_train_missing_key_raises():
+    with pytest.raises(RuntimeError):
+        ArtiCompute._get_precedent_major(
+            "scality-ring-9.9.9.0.run", version_type="previous")
