@@ -1,0 +1,38 @@
+name: "Sync images between two registries"
+description: "sync images between two registries using skopeo"
+
+inputs:
+  SOURCE_REGISTRY:
+    description: "the source registry"
+    required: true
+  TARGET_REGISTRY:
+    description: "the target registry"
+    required: true
+  IMAGE_NAME:
+    description: "the name of the image to sync"
+  SOURCE_REPO:
+    description: "the source repo that contains the images"
+  SRC_USERNAME:
+    description: "the username in the source registry"
+  SRC_PASSWORD:
+    description: "the password in source registry"
+  DEST_USERNAME:
+    description: "the username in destination registry"
+  DEST_PASSWORD:
+    description: "the password in destination registry"
+
+
+runs:
+  using: "composite"
+  steps:
+    - name: Sync images from ${{ inputs.SOURCE_REGISTRY }} to ${{ inputs.TARGET_REGISTRY }}
+      shell: bash
+      run: |-
+        skopeo sync \
+        --src docker \
+        --dest docker \
+        --all \
+        --src-creds ${{ inputs.SRC_USERNAME }}:${{ inputs.SRC_PASSWORD }} \
+        --dest-creds ${{ inputs.DEST_USERNAME }}:${{ inputs.DEST_PASSWORD }} \
+        ${{ inputs.SOURCE_REGISTRY }}/${{ inputs.SOURCE_REPO }}/${{ inputs.IMAGE_NAME }} \
+        ${{ inputs.TARGET_REGISTRY }}
