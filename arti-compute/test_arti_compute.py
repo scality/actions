@@ -64,6 +64,11 @@ UPGRADE_MATRIX = [
     ("9.5.3.0", "redhat9.8", "rhel9", "9.5.2", True),
     ("9.5.3.0", "rocky8.10", "rocky8", "9.5.2", True),
     ("9.5.3.0", "rocky9", "rocky9", "9.5.2", True),
+    ("9.5.4.0", "redhat8.10", "rhel8", "9.5.3", True),
+    ("9.5.4.0", "redhat9.7", "rhel9", "9.5.3", True),
+    ("9.5.4.0", "redhat9.8", "rhel9", "9.5.3", True),
+    ("9.5.4.0", "rocky8.10", "rocky8", "9.5.3", True),
+    ("9.5.4.0", "rocky9", "rocky9", "9.5.3", True),
     ("10.0.0.0", "redhat9.7", "rhel9", "9", True),
     ("10.0.0.0", "redhat9.8", "rhel9", "9", True),
     ("10.0.0.0", "rocky9", "rocky9", "9", True),
@@ -72,6 +77,12 @@ UPGRADE_MATRIX = [
     ("10.1.0.0", "redhat9.8", "rhel9", "10.0", True),
     ("10.1.0.0", "rocky9", "rocky9", "10.0", True),
     ("10.1.0.0", "scalityos", "scalityos", "10.0", True),
+    # 10.1.0 is not promoted, so a 10.2.0.0 build upgrades from the last
+    # promoted 10.0.x, not from the 10.1 the 'stable' resolution computes.
+    ("10.2.0.0", "redhat9.7", "rhel9", "10.0", True),
+    ("10.2.0.0", "redhat9.8", "rhel9", "10.0", True),
+    ("10.2.0.0", "rocky9", "rocky9", "10.0", True),
+    ("10.2.0.0", "scalityos", "scalityos", "10.0", True),
 ]
 
 # (current_version, raw_os, canonical_os, upgradeprev_from, supported)
@@ -79,7 +90,7 @@ UPGRADE_MATRIX = [
 # via TECH_TRAIN.
 # rhel9/rocky9 upgradeprev is refused for a RING 9 target (previous tech-train
 # is RING 8, no rhel9/rocky9 image) and allowed for RING >= 10 (previous
-# tech-train 9.5.2 is rhel9/rocky9-capable) — see RING-54645 (PR #7045).
+# tech-train 9.5.x is rhel9/rocky9-capable) — see RING-54645 (PR #7045).
 UPGRADEPREV_MATRIX = [
     ("8.5.12.0", "redhat8.10", "rhel8", "7.4.10", False),
     ("8.5.12.0", "rocky8.10", "rocky8", "7.4.10", False),
@@ -95,14 +106,23 @@ UPGRADEPREV_MATRIX = [
     ("9.5.3.0", "redhat9.8", "rhel9", "8.5.12", False),
     ("9.5.3.0", "rocky8.10", "rocky8", "8.5.12", True),
     ("9.5.3.0", "rocky9", "rocky9", "8.5.12", False),
+    ("9.5.4.0", "redhat8.10", "rhel8", "8.5.12", True),
+    ("9.5.4.0", "redhat9.7", "rhel9", "8.5.12", False),
+    ("9.5.4.0", "redhat9.8", "rhel9", "8.5.12", False),
+    ("9.5.4.0", "rocky8.10", "rocky8", "8.5.12", True),
+    ("9.5.4.0", "rocky9", "rocky9", "8.5.12", False),
     ("10.0.0.0", "redhat9.7", "rhel9", "9.5.2", True),
     ("10.0.0.0", "redhat9.8", "rhel9", "9.5.2", True),
     ("10.0.0.0", "rocky9", "rocky9", "9.5.2", True),
     ("10.0.0.0", "scalityos", "scalityos", "9.5.2", False),
-    ("10.1.0.0", "redhat9.7", "rhel9", "9.5.2", True),
-    ("10.1.0.0", "redhat9.8", "rhel9", "9.5.2", True),
-    ("10.1.0.0", "rocky9", "rocky9", "9.5.2", True),
-    ("10.1.0.0", "scalityos", "scalityos", "9.5.2", False),
+    ("10.1.0.0", "redhat9.7", "rhel9", "9.5.3", True),
+    ("10.1.0.0", "redhat9.8", "rhel9", "9.5.3", True),
+    ("10.1.0.0", "rocky9", "rocky9", "9.5.3", True),
+    ("10.1.0.0", "scalityos", "scalityos", "9.5.3", False),
+    ("10.2.0.0", "redhat9.7", "rhel9", "9.5.3", True),
+    ("10.2.0.0", "redhat9.8", "rhel9", "9.5.3", True),
+    ("10.2.0.0", "rocky9", "rocky9", "9.5.3", True),
+    ("10.2.0.0", "scalityos", "scalityos", "9.5.3", False),
 ]
 
 
@@ -323,8 +343,10 @@ def test_scalityos_upgrade_rule(from_version, is_previous, supported):
 @pytest.mark.parametrize("from_string,expected", [
     ("scality-ring-8.5.13.0.run", "8.5.12"),
     ("scality-ring-8.5.12.0.run", "8.5.11"),
+    ("scality-ring-9.5.4.0.run", "9.5.3"),
     ("scality-ring-9.5.3.0.run", "9.5.2"),
     ("scality-ring-9.5.2.0.run", "9.5.1"),
+    ("scality-ring-10.2.0.0.run", "10.1"),
     ("scality-ring-10.1.0.0.run", "10.0"),
     ("scality-ring-10.0.0.0.run", "9"),
     ("10.0.0.1", "10.0.0.0"),
@@ -339,7 +361,8 @@ def test_get_precedent_major_stable(from_string, expected):
     ("scality-ring-8.5.13.0.run", "7.4.10"),
     ("scality-ring-9.5.3.0.run", "8.5.12"),
     ("scality-ring-9.5.4.0.run", "8.5.12"),
-    ("scality-ring-10.1.0.0.run", "9.5.2"),
+    ("scality-ring-10.2.0.0.run", "9.5.3"),
+    ("scality-ring-10.1.0.0.run", "9.5.3"),
     ("scality-ring-10.0.0.0.run", "9.5.2"),
 ])
 def test_get_precedent_major_previous(from_string, expected):
@@ -348,7 +371,7 @@ def test_get_precedent_major_previous(from_string, expected):
 
 
 # TECH_TRAIN must have an entry for each active current version.
-@pytest.mark.parametrize("current", ["8.5.13", "9.5.4", "10.1.0"])
+@pytest.mark.parametrize("current", ["8.5.13", "9.5.4", "10.1.0", "10.2.0"])
 def test_tech_train_has_key_for_current_versions(current):
     assert f"previous-{current}" in ac.TECH_TRAIN
 

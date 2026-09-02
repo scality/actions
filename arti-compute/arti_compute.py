@@ -206,7 +206,8 @@ TECH_TRAIN = {
     'previous-9.5.4': '8.5.12',
 
     'previous-10.0.0': '9.5.2',
-    'previous-10.1.0': '9.5.2',
+    'previous-10.1.0': '9.5.3',
+    'previous-10.2.0': '9.5.3',
 }
 
 DEFAULT_ARTIFACT_URL = 'https://artifacts.scality.net/builds'
@@ -747,7 +748,7 @@ class ArtiCompute:
             if version < [9, 3, 0, 0]:
                 raise Unsupported("RHEL9 upgrade only supported from 9.3.0.0")
             # upgradeprev on RING 9 targets RING 8, which has no RHEL9 image;
-            # from RING 10 the previous tech-train is 9.5.2 (RHEL9-capable),
+            # from RING 10 the previous tech-train is a 9.5.x (RHEL9-capable),
             # so upgradeprev is valid there.
             if is_previous and version[0] < 10:
                 raise Unsupported("RHEL9 upgradeprev not supported")
@@ -756,7 +757,7 @@ class ArtiCompute:
             if version < [9, 4, 0, 0]:
                 raise Unsupported("Rocky9 upgrade only supported from 9.4.0.0")
             # upgradeprev on RING 9 targets RING 8, which has no Rocky9 image;
-            # from RING 10 the previous tech-train is 9.5.2 (Rocky9-capable),
+            # from RING 10 the previous tech-train is a 9.5.x (Rocky9-capable),
             # so upgradeprev is valid there.
             if is_previous and version[0] < 10:
                 raise Unsupported("Rocky9 upgradeprev not supported")
