@@ -79,7 +79,7 @@ UPGRADE_MATRIX = [
 # via TECH_TRAIN.
 # rhel9/rocky9 upgradeprev is refused for a RING 9 target (previous tech-train
 # is RING 8, no rhel9/rocky9 image) and allowed for RING >= 10 (previous
-# tech-train 9.5.2 is rhel9/rocky9-capable) — see RING-54645 (PR #7045).
+# tech-train 9.5.x is rhel9/rocky9-capable) — see RING-54645 (PR #7045).
 UPGRADEPREV_MATRIX = [
     ("8.5.12.0", "redhat8.10", "rhel8", "7.4.10", False),
     ("8.5.12.0", "rocky8.10", "rocky8", "7.4.10", False),
@@ -99,10 +99,10 @@ UPGRADEPREV_MATRIX = [
     ("10.0.0.0", "redhat9.8", "rhel9", "9.5.2", True),
     ("10.0.0.0", "rocky9", "rocky9", "9.5.2", True),
     ("10.0.0.0", "scalityos", "scalityos", "9.5.2", False),
-    ("10.1.0.0", "redhat9.7", "rhel9", "9.5.2", True),
-    ("10.1.0.0", "redhat9.8", "rhel9", "9.5.2", True),
-    ("10.1.0.0", "rocky9", "rocky9", "9.5.2", True),
-    ("10.1.0.0", "scalityos", "scalityos", "9.5.2", False),
+    ("10.1.0.0", "redhat9.7", "rhel9", "9.5.3", True),
+    ("10.1.0.0", "redhat9.8", "rhel9", "9.5.3", True),
+    ("10.1.0.0", "rocky9", "rocky9", "9.5.3", True),
+    ("10.1.0.0", "scalityos", "scalityos", "9.5.3", False),
 ]
 
 
@@ -339,7 +339,7 @@ def test_get_precedent_major_stable(from_string, expected):
     ("scality-ring-8.5.13.0.run", "7.4.10"),
     ("scality-ring-9.5.3.0.run", "8.5.12"),
     ("scality-ring-9.5.4.0.run", "8.5.12"),
-    ("scality-ring-10.1.0.0.run", "9.5.2"),
+    ("scality-ring-10.1.0.0.run", "9.5.3"),
     ("scality-ring-10.0.0.0.run", "9.5.2"),
 ])
 def test_get_precedent_major_previous(from_string, expected):
