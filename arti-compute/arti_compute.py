@@ -207,6 +207,7 @@ TECH_TRAIN = {
 
     'previous-10.0.0': '9.5.2',
     'previous-10.1.0': '9.5.3',
+    'previous-10.2.0': '9.5.3',
 }
 
 DEFAULT_ARTIFACT_URL = 'https://artifacts.scality.net/builds'
