@@ -1,0 +1,430 @@
+name: 'Packages Release'
+description: >
+  Upload and promote RING/S3C/ARTESCA artifacts in the v2.1 S3 Packages release
+  model. Encapsulates the upload, promotion (PW/RC/GA) and visibility-flip logic
+  so release repos need a single reusable workflow instead of ten separate ones.
+
+  Typical call order in a release workflow:
+    1. action=upload  (after the build step lands artifacts locally)
+    2. action=promote target_stage=PW
+    3. action=promote target_stage=RC
+    4. action=promote target_stage=GA
+    5. action=publish  publish_action=publish
+
+inputs:
+  # ── operation ────────────────────────────────────────────────────────────
+  action:
+    description: 'Operation to perform: upload | promote | publish'
+    required: true
+
+  # ── release identity ─────────────────────────────────────────────────────
+  version:
+    description: 'Release version string (e.g. 9.5.0.3)'
+    required: true
+  build_id:
+    description: >
+      Build ID used to locate the staging prefix. Defaults to the packed
+      version digits (9.5.0.3 → 9503).
+    required: false
+    default: ''
+
+  # ── upload-specific ───────────────────────────────────────────────────────
+  artifacts_path:
+    description: >
+      Local directory holding the artifacts to upload (required for
+      action=upload). The path is walked recursively; sub-directories are
+      preserved in the staging prefix.
+    required: false
+    default: ''
+
+  # ── promote-specific ──────────────────────────────────────────────────────
+  target_stage:
+    description: 'Promotion target: PW | RC | GA (required for action=promote)'
+    required: false
+    default: ''
+
+  # ── publish-specific ──────────────────────────────────────────────────────
+  publish_action:
+    description: >
+      Sub-action for action=publish: publish (visibility=external) or
+      unpublish (visibility=internal).
+    required: false
+    default: 'publish'
+  publish_reason:
+    description: 'Free-text reason, audited in the manifest (for action=publish)'
+    required: false
+    default: ''
+
+  # ── GCP auth ─────────────────────────────────────────────────────────────
+  gcp_workload_identity_provider:
+    description: 'GCP Workload Identity Federation provider URL'
+    required: true
+  gcp_service_account:
+    description: 'GCP service account email for GCS access'
+    required: true
+
+  # ── bucket config ─────────────────────────────────────────────────────────
+  bucket_staging:
+    description: 'GCS staging bucket name (without gs:// prefix)'
+    required: false
+    default: ''
+  bucket_packages:
+    description: 'GCS packages bucket name (without gs:// prefix)'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    # ── auth ──────────────────────────────────────────────────────────────────
+    - name: Authenticate to GCP
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ inputs.gcp_workload_identity_provider }}
+        service_account: ${{ inputs.gcp_service_account }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    # ── derive shared values ──────────────────────────────────────────────────
+    - name: Compute derived values
+      id: derived
+      shell: bash
+      run: |
+        set -eu
+        BID="${{ inputs.build_id }}"
+        [ -n "$BID" ] || BID=$(echo "${{ inputs.version }}" | tr -d '.')
+        echo "build_id=${BID}" >> "$GITHUB_OUTPUT"
+
+        MAJOR=$(echo "${{ inputs.version }}" | cut -d. -f1)
+        case "$MAJOR" in
+          8)  CODENAME=haboob  ;;
+          9)  CODENAME=khamsin ;;
+          10) CODENAME=levante ;;
+          11) CODENAME=mistral ;;
+          *)  CODENAME="ring-${MAJOR}" ;;
+        esac
+        echo "codename=${CODENAME}" >> "$GITHUB_OUTPUT"
+
+        case "${{ inputs.target_stage }}" in
+          PW) echo "source_stage=staging" >> "$GITHUB_OUTPUT" ;;
+          RC) echo "source_stage=PW"      >> "$GITHUB_OUTPUT" ;;
+          GA) echo "source_stage=RC"      >> "$GITHUB_OUTPUT" ;;
+          *)  echo "source_stage="        >> "$GITHUB_OUTPUT" ;;
+        esac
+
+    # ─────────────────────────── UPLOAD ──────────────────────────────────────
+    - name: Upload artifacts to staging
+      if: ${{ inputs.action == 'upload' }}
+      shell: bash
+      env:
+        VERSION:       ${{ inputs.version }}
+        BUILD_ID:      ${{ steps.derived.outputs.build_id }}
+        ARTIFACTS_PATH: ${{ inputs.artifacts_path }}
+        BUCKET_STAGING: ${{ inputs.bucket_staging }}
+        RUN_ID:        ${{ github.run_id }}
+      run: |
+        set -eu
+        if [ -z "$BUCKET_STAGING" ]; then
+          echo "::error::bucket_staging is required for action=upload"; exit 2
+        fi
+        if [ -z "$ARTIFACTS_PATH" ] || [ ! -d "$ARTIFACTS_PATH" ]; then
+          echo "::error::artifacts_path must point to an existing directory for action=upload"; exit 2
+        fi
+
+        PREFIX="${VERSION}.r${BUILD_ID}"
+        UPLOADED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+        COUNT=0
+
+        # Derive os/arch/product from filename; extend as real artifact naming evolves.
+        derive() {
+          local base="$1"
+          OS="" ARCH="x86_64" PRODUCT=""
+          case "$base" in
+            scality-ring-*) PRODUCT="ring" ;;
+            s3-offline-*|s3c-*)   PRODUCT="s3c"  ;;
+            artesca-*)      PRODUCT="artesca" ;;
+            ring-sbom*)     PRODUCT="ring" ;;
+            s3c-sbom*)      PRODUCT="s3c"  ;;
+          esac
+          local tok
+          tok=$(echo "$base" | grep -oE 'rocky[89]|rhel[89]|redhat[89]' | head -1 || true)
+          OS="${tok/redhat/rhel}"
+          [ -n "$OS" ]      || OS="all"
+          [ -n "$PRODUCT" ] || PRODUCT="unknown"
+        }
+
+        while IFS= read -r f; do
+          rel="${f#$ARTIFACTS_PATH/}"
+          base=$(basename "$f")
+          size=$(stat -c %s "$f")
+          sha=$(sha256sum "$f" | awk '{print $1}')
+          crc=$(gcloud storage hash "$f" --hex --skip-md5 2>/dev/null \
+                  | awk -F': *' '/crc32c_hash/{print $2}')
+          derive "$base"
+          meta="sha256=${sha},crc32c=${crc},size=${size},os=${OS},arch=${ARCH}"
+          meta="${meta},product=${PRODUCT},origin-run-id=${RUN_ID},uploaded-at=${UPLOADED_AT}"
+          meta="${meta},stage=staging,locked=false,visibility=internal"
+          gcloud storage cp "$f" "gs://${BUCKET_STAGING}/${PREFIX}/${rel}" \
+            --custom-metadata="${meta}" --quiet
+          COUNT=$((COUNT + 1))
+        done < <(find "$ARTIFACTS_PATH" -type f | sort)
+
+        echo "::notice::Landed ${COUNT} objects in gs://${BUCKET_STAGING}/${PREFIX}/ (stage=staging)"
+        {
+          echo "## Upload ${VERSION} (r${BUILD_ID}) → staging"
+          echo ""
+          echo "| Field | Value |"
+          echo "|---|---|"
+          echo "| Bucket | \`gs://${BUCKET_STAGING}/${PREFIX}/\` |"
+          echo "| Objects | ${COUNT} |"
+          echo "| stage | \`staging\` |"
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    # ─────────────────────────── PROMOTE ─────────────────────────────────────
+    - name: Check release not locked
+      if: ${{ inputs.action == 'promote' }}
+      shell: bash
+      env:
+        VERSION:         ${{ inputs.version }}
+        BUCKET_PACKAGES: ${{ inputs.bucket_packages }}
+      run: |
+        set -eu
+        LOCK_KEY="locks/${VERSION}.lock.json"
+        if LOCK=$(gcloud storage cat "gs://${BUCKET_PACKAGES}/${LOCK_KEY}" 2>/dev/null); then
+          EXPIRES_AT=$(echo "$LOCK" | jq -r '.expires_at')
+          EXPIRES_EPOCH=$(date -u -d "$EXPIRES_AT" +%s 2>/dev/null || echo 0)
+          if [ "$(date -u +%s)" -lt "$EXPIRES_EPOCH" ]; then
+            echo "::error::${VERSION} is locked by $(echo "$LOCK" | jq -r '.locked_by') until ${EXPIRES_AT}"
+            exit 2
+          fi
+          echo "::notice::Expired lock found — ignoring"
+        fi
+
+    - name: Promote staging → PW (server-side copy)
+      if: ${{ inputs.action == 'promote' && inputs.target_stage == 'PW' }}
+      shell: bash
+      env:
+        VERSION:         ${{ inputs.version }}
+        BUILD_ID:        ${{ steps.derived.outputs.build_id }}
+        CODENAME:        ${{ steps.derived.outputs.codename }}
+        BUCKET_STAGING:  ${{ inputs.bucket_staging }}
+        BUCKET_PACKAGES: ${{ inputs.bucket_packages }}
+        ACTOR:           ${{ github.actor }}
+        RUN_ID:          ${{ github.run_id }}
+      run: |
+        set -eu
+        if [ -z "$BUCKET_STAGING" ]; then
+          echo "::error::bucket_staging is required for action=promote target_stage=PW"; exit 2
+        fi
+        PREFIX="${VERSION}.r${BUILD_ID}"
+        MANIFEST_KEY="manifests/${VERSION}.json"
+        TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+        if gcloud storage ls "gs://${BUCKET_PACKAGES}/${MANIFEST_KEY}" >/dev/null 2>&1; then
+          echo "::error::Manifest ${MANIFEST_KEY} already exists — ${VERSION} already promoted to PW or beyond"
+          exit 2
+        fi
+        SRC_COUNT=$(gcloud storage ls "gs://${BUCKET_STAGING}/${PREFIX}/**" 2>/dev/null | wc -l)
+        if [ "$SRC_COUNT" -eq 0 ]; then
+          echo "::error::No staging objects under gs://${BUCKET_STAGING}/${PREFIX}/ — run action=upload first"
+          exit 2
+        fi
+
+        echo "::notice::Copying ${SRC_COUNT} objects staging -> packages (server-side, one copy)"
+        gcloud storage cp --recursive \
+          "gs://${BUCKET_STAGING}/${PREFIX}/*" \
+          "gs://${BUCKET_PACKAGES}/${PREFIX}/" --quiet
+
+        while IFS= read -r obj; do
+          [ -z "$obj" ] && continue
+          gcloud storage objects update "$obj" \
+            --update-custom-metadata="stage=PW,promoted-at=${TS},promoted-by=${ACTOR}" \
+            --quiet
+        done < <(gcloud storage ls "gs://${BUCKET_PACKAGES}/${PREFIX}/**")
+
+        OBJECTS="[]"
+        while IFS= read -r obj; do
+          [ -z "$obj" ] && continue
+          KEY="${obj#gs://${BUCKET_PACKAGES}/}"
+          CF=$(gcloud storage objects describe "$obj" --format="json(custom_fields,size)")
+          OBJECTS=$(echo "$OBJECTS" | jq --arg key "$KEY" --argjson cf "$CF" '. + [{
+            key: $key,
+            sha256: $cf.custom_fields.sha256,
+            crc32c: $cf.custom_fields.crc32c,
+            size: ($cf.custom_fields.size // ($cf.size|tostring)),
+            os: $cf.custom_fields.os,
+            arch: $cf.custom_fields.arch,
+            product: $cf.custom_fields.product
+          }]')
+        done < <(gcloud storage ls "gs://${BUCKET_PACKAGES}/${PREFIX}/**")
+
+        jq -n \
+          --arg version "$VERSION" --arg build_id "$BUILD_ID" --arg prefix "$PREFIX" \
+          --arg codename "$CODENAME" --arg bucket "$BUCKET_PACKAGES" \
+          --arg by "$ACTOR" --arg at "$TS" --arg run_id "$RUN_ID" \
+          --argjson objects "$OBJECTS" \
+          '{
+            version: $version, build_id: $build_id, prefix: $prefix, codename: $codename,
+            bucket: $bucket, stage: "PW", created_at: $at, created_by: $by,
+            objects: $objects,
+            promotions: [{stage: "PW", at: $at, by: $by, run_id: $run_id, copied: true}]
+          }' > /tmp/manifest.json
+
+        gcloud storage cp /tmp/manifest.json \
+          "gs://${BUCKET_PACKAGES}/${MANIFEST_KEY}" --if-generation-match=0
+        echo "::notice::Manifest written: gs://${BUCKET_PACKAGES}/${MANIFEST_KEY} (stage=PW)"
+        {
+          echo "## Promote ${VERSION}: staging → PW"
+          echo ""
+          echo "| Field | Value |"
+          echo "|---|---|"
+          echo "| Bucket | \`gs://${BUCKET_PACKAGES}/${PREFIX}/\` |"
+          echo "| Mode | server-side copy + metadata flip |"
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Promote PW → RC or RC → GA (metadata-only flip)
+      if: ${{ inputs.action == 'promote' && (inputs.target_stage == 'RC' || inputs.target_stage == 'GA') }}
+      shell: bash
+      env:
+        VERSION:         ${{ inputs.version }}
+        TARGET:          ${{ inputs.target_stage }}
+        SOURCE:          ${{ steps.derived.outputs.source_stage }}
+        BUCKET_PACKAGES: ${{ inputs.bucket_packages }}
+        ACTOR:           ${{ github.actor }}
+        RUN_ID:          ${{ github.run_id }}
+      run: |
+        set -eu
+        MANIFEST_KEY="manifests/${VERSION}.json"
+        TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+        MANIFEST=$(gcloud storage cat "gs://${BUCKET_PACKAGES}/${MANIFEST_KEY}" 2>/dev/null) || {
+          echo "::error::No manifest for ${VERSION} — promote to PW first"; exit 2; }
+        CUR=$(echo "$MANIFEST" | jq -r '.stage')
+        PREFIX=$(echo "$MANIFEST" | jq -r '.prefix')
+
+        if [ "$CUR" != "$SOURCE" ]; then
+          echo "::error::Cannot promote to ${TARGET}: current stage is ${CUR}, expected ${SOURCE}"
+          exit 2
+        fi
+
+        echo "::notice::Flipping stage ${CUR} → ${TARGET} on objects under ${PREFIX} (no copy)"
+        while IFS= read -r obj; do
+          [ -z "$obj" ] && continue
+          gcloud storage objects update "$obj" \
+            --update-custom-metadata="stage=${TARGET},promoted-at=${TS},promoted-by=${ACTOR}" \
+            --quiet
+        done < <(gcloud storage ls "gs://${BUCKET_PACKAGES}/${PREFIX}/**")
+
+        echo "$MANIFEST" | jq \
+          --arg stage "$TARGET" --arg at "$TS" --arg by "$ACTOR" --arg run_id "$RUN_ID" \
+          '.stage = $stage
+           | .promotions += [{stage: $stage, at: $at, by: $by, run_id: $run_id, copied: false}]' \
+          > /tmp/manifest.json
+        gcloud storage cp /tmp/manifest.json "gs://${BUCKET_PACKAGES}/${MANIFEST_KEY}"
+        echo "PREFIX=${PREFIX}" >> "$GITHUB_ENV"
+        echo "::notice::No data copies performed for ${TARGET} promotion"
+        {
+          echo "## Promote ${VERSION}: ${SOURCE} → ${TARGET}"
+          echo ""
+          echo "| Field | Value |"
+          echo "|---|---|"
+          echo "| Bucket | \`gs://${BUCKET_PACKAGES}/${PREFIX}/\` |"
+          echo "| Mode | metadata-only flip (zero bytes copied) |"
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Apply temporary hold on GA objects (never-delete invariant)
+      if: ${{ inputs.action == 'promote' && inputs.target_stage == 'GA' }}
+      shell: bash
+      env:
+        BUCKET_PACKAGES: ${{ inputs.bucket_packages }}
+      run: |
+        set -eu
+        N=0
+        while IFS= read -r obj; do
+          [ -z "$obj" ] && continue
+          gcloud storage objects update "$obj" --temporary-hold --quiet
+          N=$((N+1))
+        done < <(gcloud storage ls "gs://${BUCKET_PACKAGES}/${PREFIX}/**")
+        echo "::notice::Applied temporary hold to ${N} GA objects"
+
+    - name: Update latest pointer (GA only)
+      if: ${{ inputs.action == 'promote' && inputs.target_stage == 'GA' }}
+      shell: bash
+      env:
+        VERSION:         ${{ inputs.version }}
+        CODENAME:        ${{ steps.derived.outputs.codename }}
+        BUCKET_PACKAGES: ${{ inputs.bucket_packages }}
+      run: |
+        set -eu
+        LATEST_KEY="ring/${CODENAME}/latest.json"
+        CURRENT=$(gcloud storage cat "gs://${BUCKET_PACKAGES}/${LATEST_KEY}" 2>/dev/null \
+                    | jq -r '.version' || echo "0.0.0.0")
+        V_CUR=$(printf "%d%02d%02d%02d" $(echo "$CURRENT" | tr '.' ' '))
+        V_NEW=$(printf "%d%02d%02d%02d" $(echo "$VERSION" | tr '.' ' '))
+        if [ "$V_NEW" -gt "$V_CUR" ]; then
+          jq -n --arg v "$VERSION" --arg p "${PREFIX}" '{version:$v, prefix:$p}' \
+            | gcloud storage cp - "gs://${BUCKET_PACKAGES}/${LATEST_KEY}"
+          echo "::notice::latest (${CODENAME}): ${CURRENT} → ${VERSION}"
+        else
+          echo "::notice::latest unchanged at ${CURRENT} (${VERSION} is not newer)"
+        fi
+
+    # ─────────────────────────── PUBLISH ─────────────────────────────────────
+    - name: Flip visibility (publish / unpublish)
+      if: ${{ inputs.action == 'publish' }}
+      shell: bash
+      env:
+        VERSION:         ${{ inputs.version }}
+        PUBLISH_ACTION:  ${{ inputs.publish_action }}
+        REASON:          ${{ inputs.publish_reason }}
+        BUCKET_PACKAGES: ${{ inputs.bucket_packages }}
+        ACTOR:           ${{ github.actor }}
+        RUN_ID:          ${{ github.run_id }}
+      run: |
+        set -eu
+        MANIFEST_KEY="manifests/${VERSION}.json"
+        TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+        case "$PUBLISH_ACTION" in
+          publish)   VIS=external ;;
+          unpublish) VIS=internal ;;
+          *) echo "::error::publish_action must be 'publish' or 'unpublish'"; exit 2 ;;
+        esac
+
+        MANIFEST=$(gcloud storage cat "gs://${BUCKET_PACKAGES}/${MANIFEST_KEY}" 2>/dev/null) || {
+          echo "::error::No manifest for ${VERSION}"; exit 2; }
+        STAGE=$(echo "$MANIFEST" | jq -r '.stage')
+        PREFIX=$(echo "$MANIFEST" | jq -r '.prefix')
+
+        if [ "$PUBLISH_ACTION" = "publish" ] && [ "$STAGE" != "GA" ]; then
+          echo "::error::Only GA versions can be published; ${VERSION} is at stage ${STAGE}"
+          exit 2
+        fi
+
+        N=0
+        while IFS= read -r obj; do
+          [ -z "$obj" ] && continue
+          gcloud storage objects update "$obj" \
+            --update-custom-metadata="visibility=${VIS},visibility-changed-at=${TS},visibility-changed-by=${ACTOR}" \
+            --quiet
+          N=$((N+1))
+        done < <(gcloud storage ls "gs://${BUCKET_PACKAGES}/${PREFIX}/**")
+
+        echo "$MANIFEST" | jq \
+          --arg vis "$VIS" --arg at "$TS" --arg by "$ACTOR" \
+          --arg run_id "$RUN_ID" --arg reason "$REASON" --arg action "$PUBLISH_ACTION" \
+          '.visibility = $vis
+           | .promotions += [{action: $action, visibility: $vis, at: $at, by: $by, run_id: $run_id, reason: $reason}]' \
+          > /tmp/manifest.json
+        gcloud storage cp /tmp/manifest.json "gs://${BUCKET_PACKAGES}/${MANIFEST_KEY}"
+
+        echo "::notice::${PUBLISH_ACTION}: set visibility=${VIS} on ${N} objects of ${VERSION}"
+        {
+          echo "## ${PUBLISH_ACTION} ${VERSION}"
+          echo ""
+          echo "| Field | Value |"
+          echo "|---|---|"
+          echo "| Stage | ${STAGE} |"
+          echo "| Visibility | **${VIS}** |"
+          echo "| Objects updated | ${N} |"
+          echo "| Reason | ${REASON:-—} |"
+        } >> "$GITHUB_STEP_SUMMARY"
