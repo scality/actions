@@ -1,0 +1,58 @@
+name: "start miniring"
+description: 'Spawn a miniring cluster in the background and wait until it is ready'
+
+inputs:
+  bin:
+    description: Path to the miniring binary.
+    required: true
+
+  nodes:
+    description: Number of bizstorenode instances to spawn.
+    required: true
+
+  disks:
+    description: Number of biziod instances to spawn.
+    required: true
+
+  node-bin-path:
+    description: Path to the bizstorenode binary.
+    required: true
+
+  disk-bin-path:
+    description: Path to the biziod binary.
+    required: true
+
+  extra-args:
+    description: |
+      Further miniring options, one per line, in `--option=value` form.
+      Connector options belong here, for example `--sproxyd.enabled`.
+    default: ""
+
+  log:
+    description: File collecting the combined output of every spawned process.
+    default: miniring.log
+
+  pid:
+    description: File the miniring pid is written to, for teardown.
+    default: miniring.pid
+
+  timeout:
+    description: Seconds to wait for miniring to report readiness.
+    default: "60"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Spawn miniring
+      shell: bash
+      env:
+        MINIRING_BIN: ${{ inputs.bin }}
+        NODES: ${{ inputs.nodes }}
+        DISKS: ${{ inputs.disks }}
+        NODE_BIN_PATH: ${{ inputs.node-bin-path }}
+        DISK_BIN_PATH: ${{ inputs.disk-bin-path }}
+        EXTRA_ARGS: ${{ inputs.extra-args }}
+        LOG: ${{ inputs.log }}
+        PID_FILE: ${{ inputs.pid }}
+        TIMEOUT: ${{ inputs.timeout }}
+      run: ${GITHUB_ACTION_PATH}/start-miniring.sh

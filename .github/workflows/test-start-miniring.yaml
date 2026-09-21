@@ -1,0 +1,92 @@
+name: Test start-miniring
+
+on:
+  pull_request:
+    paths:
+      - 'start-miniring/**'
+      - '.github/workflows/test-start-miniring.yaml'
+
+jobs:
+  ready:
+    name: Readiness is awaited
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # miniring is a release binary from another repository; a stub is enough
+      # to exercise the action's own behaviour.
+      - name: Install a miniring stub
+        run: |
+          cat > miniring <<'STUB'
+          #!/usr/bin/env bash
+          printf '[%s]\n' "$@" > argv.txt
+          echo "All processes started"
+          sleep 300
+          STUB
+          chmod +x miniring
+
+      - name: Start miniring
+        uses: ./start-miniring
+        with:
+          bin: ./miniring
+          nodes: 1
+          disks: 10
+          node-bin-path: binaries/bizstorenode
+          disk-bin-path: binaries/biziod
+          extra-args: |
+            --sproxyd.enabled
+            --sproxyd.port=10000
+            --biziod.extra-args=-V debug
+
+      # Make sure all the passed parameters were parsed properly.
+      - name: Check the counts and binary paths reached miniring
+        run: |
+          grep -qxF -- '[-n]' argv.txt
+          grep -qxF -- '[10]' argv.txt
+          grep -qxF -- '[binaries/bizstorenode]' argv.txt
+
+      # An option whose value holds a space must stay one argument
+      # (eg: --biziod.extra-args=-V debug).
+      - name: Check the extra options kept their quoting
+        run: |
+          grep -qxF -- '[--sproxyd.port=10000]' argv.txt
+          grep -qxF -- '[--biziod.extra-args=-V debug]' argv.txt
+
+      - name: Check the pid file points at a running process
+        run: kill -0 "$(cat miniring.pid)"
+
+      - name: Stop miniring
+        if: always()
+        run: sudo kill "$(cat miniring.pid)" 2> /dev/null || true
+
+  never-ready:
+    name: A cluster that never reports readiness fails the step
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install a stub that never reports readiness
+        run: |
+          printf '#!/usr/bin/env bash\necho booting\nsleep 300\n' > miniring
+          chmod +x miniring
+
+      - name: Start miniring
+        id: start
+        continue-on-error: true
+        uses: ./start-miniring
+        with:
+          bin: ./miniring
+          nodes: 1
+          disks: 1
+          node-bin-path: binaries/bizstorenode
+          disk-bin-path: binaries/biziod
+          timeout: 5
+
+      - name: Check the step failed
+        run: test '${{ steps.start.outcome }}' = failure
+
+      - name: Stop miniring
+        if: always()
+        run: sudo kill "$(cat miniring.pid)" 2> /dev/null || true
