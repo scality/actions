@@ -1,0 +1,27 @@
+name: "setup RDMA runner"
+description: 'Set up a SoftRoCE device on a RHEL-family runner and report the address to bind RDMA endpoints to'
+
+inputs:
+  netdev:
+    description: Network device the SoftRoCE link is attached to.
+    default: eth0
+
+  link:
+    description: Name of the SoftRoCE link to create.
+    default: rxe0
+
+outputs:
+  ip:
+    description: IPv4 address of the netdev, to bind RDMA endpoints to.
+    value: ${{ steps.setup.outputs.ip }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up SoftRoCE
+      id: setup
+      shell: bash
+      env:
+        NETDEV: ${{ inputs.netdev }}
+        LINK: ${{ inputs.link }}
+      run: ${GITHUB_ACTION_PATH}/setup-rdma-runner.sh
