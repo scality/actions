@@ -1,0 +1,55 @@
+name: Test setup-rdma-runner
+
+on:
+  pull_request:
+    paths:
+      - 'setup-rdma-runner/**'
+      - '.github/workflows/test-setup-rdma-runner.yaml'
+
+jobs:
+  softroce:
+    name: SoftRoCE setup
+    runs-on:
+      - self-hosted
+      - rocky9
+      - large
+      - gcloud
+    env:
+      RDMA_NETDEV: eth0
+      RDMA_LINK: rxe-test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up SoftRoCE
+        id: rdma
+        uses: ./setup-rdma-runner
+        with:
+          netdev: ${{ env.RDMA_NETDEV }}
+          link: ${{ env.RDMA_LINK }}
+
+      - name: Check the reported address is the netdev's
+        run: |
+          EXPECTED=$(ip -4 addr show "$RDMA_NETDEV" | awk '/inet / {print $2}' | cut -d/ -f1)
+          test "${{ steps.rdma.outputs.ip }}" = "$EXPECTED"
+
+      - name: Check the link carries RDMA traffic
+        run: |
+          ibv_rc_pingpong -d "$RDMA_LINK" -g 1 &
+          SERVER_PID=$!
+          sleep 1
+          ibv_rc_pingpong -d "$RDMA_LINK" -g 1 "${{ steps.rdma.outputs.ip }}"
+          wait "$SERVER_PID"
+
+      # Runners are reused between jobs, so a second setup must succeed over
+      # the link the first one left behind.
+      - name: Set up SoftRoCE over the existing link
+        uses: ./setup-rdma-runner
+        with:
+          netdev: ${{ env.RDMA_NETDEV }}
+          link: ${{ env.RDMA_LINK }}
+
+      # The runner is shared, so the test link must not outlive the job.
+      - name: Delete the test link
+        if: always()
+        run: sudo rdma link delete "$RDMA_LINK" 2> /dev/null || true
