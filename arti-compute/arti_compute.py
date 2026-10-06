@@ -444,7 +444,7 @@ class ArtiCompute:
         if self._ring_installer == UNSUPPORTED:
             self._s3_installer = UNSUPPORTED
         elif _s3_from_adi or (_skip_ring_lookup and not self.s3_artifact):
-            logger.info("S3 installer for scalityos will be resolved from ADI manifest")
+            logger.info("S3 installer for scalityos comes from the ADI ISO")
         else:
             self._s3_installer = self._find_latest_s3_installer(
                 self._ring_installer or self.ring_artifact or "",
@@ -1671,8 +1671,8 @@ class ArtiCompute:
             if manifest_s3_version:
                 self._adi_s3_version = manifest_s3_version
 
-            # S3 for target version from manifest (when not explicitly provided)
-            if not self.s3_artifact and not self._s3_installer:
+            # An explicit ADI artifact installs the S3C bundled in its ISO
+            if not adi_artifact and not self.s3_artifact and not self._s3_installer:
                 self._s3_installer = self._find_s3_from_manifest(adi_entry)
 
         # Upgrade version — determine the previous ADI entry to upgrade from.
