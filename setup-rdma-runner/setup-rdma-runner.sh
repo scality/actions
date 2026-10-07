@@ -4,8 +4,14 @@
 
 set -eu -o pipefail
 
-# Install RDMA libraries
-sudo dnf -y install libibverbs-utils librdmacm
+# Install RDMA and io_uring libraries
+sudo dnf -y install libibverbs-utils librdmacm liburing
+
+# Allow io_uring, which biziod refuses to start without
+if [ -e /proc/sys/kernel/io_uring_disabled ]; then
+    sudo sysctl -w kernel.io_uring_disabled=0
+    test "$(sysctl -n kernel.io_uring_disabled)" = 0
+fi
 
 # Load SoftRoCE kernel module
 sudo modprobe rdma_rxe

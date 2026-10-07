@@ -1,5 +1,5 @@
 name: "setup RDMA runner"
-description: 'Set up a SoftRoCE device on a RHEL-family runner and report the address to bind RDMA endpoints to'
+description: 'Set up a SoftRoCE device and enable io_uring on a RHEL-family runner, and report the address to bind RDMA endpoints to'
 
 inputs:
   netdev:

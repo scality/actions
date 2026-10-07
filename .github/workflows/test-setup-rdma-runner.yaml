@@ -33,6 +33,13 @@ jobs:
           EXPECTED=$(ip -4 addr show "$RDMA_NETDEV" | awk '/inet / {print $2}' | cut -d/ -f1)
           test "${{ steps.rdma.outputs.ip }}" = "$EXPECTED"
 
+      - name: Check io_uring is allowed
+        run: |
+          if [ -e /proc/sys/kernel/io_uring_disabled ]; then
+            test "$(sysctl -n kernel.io_uring_disabled)" = 0
+          fi
+          rpm -q liburing
+
       - name: Check the link carries RDMA traffic
         run: |
           ibv_rc_pingpong -d "$RDMA_LINK" -g 1 &
