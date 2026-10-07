@@ -444,7 +444,7 @@ class ArtiCompute:
         if self._ring_installer == UNSUPPORTED:
             self._s3_installer = UNSUPPORTED
         elif _s3_from_adi or (_skip_ring_lookup and not self.s3_artifact):
-            logger.info("S3 installer for scalityos will be resolved from ADI manifest")
+            logger.info("S3 installer for scalityos comes from the ADI ISO")
         else:
             self._s3_installer = self._find_latest_s3_installer(
                 self._ring_installer or self.ring_artifact or "",
@@ -1567,45 +1567,13 @@ class ArtiCompute:
         logger.warning(f"No scalityos SBOM found in {artifact_url}/sbom/")
         return None
 
-    def _find_s3_from_manifest(self, adi_entry):
-        """Find S3 installer URL from an ADI manifest entry.
-
-        Searches for the promoted S3 build on artifacts.scality.net
-        and verifies the installer exists.
-        """
-        s3c = adi_entry.get('components', {}).get('s3c', {})
-        s3_version = s3c.get('version', '')
-        if not s3_version:
-            raise ArtifactError("ADI manifest entry missing S3C version")
-
-        logger.info(
-            f"Resolving S3 installer from ADI manifest (S3C version {s3_version})")
-
-        for s3_org in ('federation', 'Federation'):
-            s3_build = f"github:scality:{s3_org}:promoted-{s3_version}"
-            s3_url = os.path.join(DEFAULT_ARTIFACT_URL, s3_build)
-            try:
-                s3_installer = self._find_s3_installer(
-                    s3_url, self.os_name, self.offline, auth=self.auth)
-                if s3_installer:
-                    logger.info(
-                        f"Found S3 installer from ADI manifest: "
-                        f"{os.path.basename(s3_installer)}")
-                    return s3_installer
-            except ArtifactError:
-                continue
-
-        raise ArtifactError(
-            f"S3 installer for version {s3_version} (from ADI manifest) "
-            f"not found on artifacts.scality.net")
-
     def _resolve_adi(self, adi_artifact=None, adi_upgrade_from=None,
                      github_token=None):
-        """Resolve ADI ISO and S3 installers for scalityos.
+        """Resolve the ADI ISO and component versions for scalityos.
 
         For each version (target, upgrade):
         - Finds the matching ADI ISO URL
-        - Resolves S3 installer from the manifest when not explicitly provided
+        - Reads the SCOS, RING and S3C versions from the ADI manifest
 
         The previous ADI version for upgrades is determined by (in order):
         1. --adi-upgrade-from (explicit ADI version override)
@@ -1670,10 +1638,6 @@ class ArtiCompute:
             manifest_s3_version = s3_info.get('version', '')
             if manifest_s3_version:
                 self._adi_s3_version = manifest_s3_version
-
-            # S3 for target version from manifest (when not explicitly provided)
-            if not self.s3_artifact and not self._s3_installer:
-                self._s3_installer = self._find_s3_from_manifest(adi_entry)
 
         # Upgrade version — determine the previous ADI entry to upgrade from.
         # Priority: --adi-upgrade-from > manifest history
@@ -1769,9 +1733,6 @@ class ArtiCompute:
                             f"Could not find RING installer for "
                             f"previous ADI version {prev_adi_version} "
                             f"(RING {prev_ring_version})")
-                if not self.s3_artifact and not self._s3_upgrade_from:
-                    self._s3_upgrade_from = (
-                        self._find_s3_from_manifest(prev_entry))
 
             self._upgrade_snapshot = self._find_adi_snapshot(
                 prev_adi_version,
