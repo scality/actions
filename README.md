@@ -10,8 +10,8 @@ Bunch of step to upload an image speed up with `actions@cache`.
 
 ## setup-rdma-runner
 Set up SoftRoCE on a RHEL-family runner: install the RDMA userspace tools,
-load `rdma_rxe`, attach a link to a netdev, and output the address to bind
-RDMA endpoints to.
+load `rdma_rxe`, attach a link to a netdev, enable io_uring (biziod refuses to
+start without it), and output the address to bind RDMA endpoints to.
 
 ## start-miniring
 Spawn a miniring cluster in the background, wait until it reports readiness,
