@@ -63,6 +63,27 @@ inputs:
     description: 'GCP service account email for GCS access'
     required: true
 
+  # ── retention (B3) ────────────────────────────────────────────────────────
+  retention_pw:
+    description: >
+      Retention window for PW objects, e.g. 2d / 1w / 6m. Written in Unlocked
+      mode, so un-promote can still clear it. Empty disables it.
+    required: false
+    default: ''
+  retention_rc:
+    description: 'Retention window for RC objects. Unlocked, like PW.'
+    required: false
+    default: ''
+  retention_ga:
+    description: >
+      Retention window for GA objects, written in LOCKED mode. A locked
+      retain-until can only ever be increased — not by the bucket owner, not by
+      the project owner, not after it expires. Empty falls back to a temporary
+      hold, which protects against accident but not against a compromised
+      credential.
+    required: false
+    default: ''
+
   # ── bucket config ─────────────────────────────────────────────────────────
   bucket_staging:
     description: 'GCS staging bucket name (without gs:// prefix)'
@@ -134,6 +155,7 @@ runs:
         PREFIX="${VERSION}.r${BUILD_ID}"
         UPLOADED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
         COUNT=0
+        SKIPPED=0
 
         # Derive os/arch/product from filename; extend as real artifact naming evolves.
         derive() {
@@ -149,8 +171,18 @@ runs:
           local tok
           tok=$(echo "$base" | grep -oE 'rocky[89]|rhel[89]|redhat[89]' | head -1 || true)
           OS="${tok/redhat/rhel}"
-          [ -n "$OS" ]      || OS="all"
-          [ -n "$PRODUCT" ] || PRODUCT="unknown"
+          # `all` is the LEAST restricted value, and RHEL entitlement is decided
+          # from this field alone — so an unrecognised RHEL filename fails open,
+          # offering licensed content to callers who hold no licence. Defaulting
+          # silently is what makes that invisible, so say it out loud.
+          if [ -z "$OS" ]; then
+            OS="all"
+            echo "::warning::${base}: OS not recognised, defaulting to os=all (unrestricted). Check the derivation if this artifact is RHEL-only."
+          fi
+          if [ -z "$PRODUCT" ]; then
+            PRODUCT="unknown"
+            echo "::warning::${base}: product not recognised, defaulting to product=unknown"
+          fi
         }
 
         while IFS= read -r f; do
@@ -164,19 +196,41 @@ runs:
           meta="sha256=${sha},crc32c=${crc},size=${size},os=${OS},arch=${ARCH}"
           meta="${meta},product=${PRODUCT},origin-run-id=${RUN_ID},uploaded-at=${UPLOADED_AT}"
           meta="${meta},stage=staging,locked=false,visibility=internal"
-          gcloud storage cp "$f" "gs://${BUCKET_STAGING}/${PREFIX}/${rel}" \
-            --custom-metadata="${meta}" --quiet
+
+          # Re-running an upload must be safe and must never replace bytes.
+          # Overwriting in GCS is a delete plus a create, so it needs
+          # storage.objects.delete — which a least-privilege deployer does not
+          # have, and should not. Identical content is skipped; different content
+          # is refused rather than overwritten.
+          DEST="gs://${BUCKET_STAGING}/${PREFIX}/${rel}"
+          EXISTING=$(gcloud storage objects describe "$DEST" \
+                       --format="value(custom_fields.sha256)" 2>/dev/null || true)
+          if [ -n "$EXISTING" ]; then
+            if [ "$EXISTING" = "$sha" ]; then
+              echo "::notice::${rel} already uploaded with the same sha256 — skipping"
+              SKIPPED=$((SKIPPED + 1))
+              continue
+            fi
+            echo "::error::${rel} already exists in staging with a different sha256."
+            echo "::error::  uploaded: ${EXISTING}"
+            echo "::error::  local:    ${sha}"
+            echo "::error::Publishing different bytes under the same version is not supported — ship a new version."
+            exit 2
+          fi
+
+          gcloud storage cp "$f" "$DEST" --custom-metadata="${meta}" --quiet
           COUNT=$((COUNT + 1))
         done < <(find "$ARTIFACTS_PATH" -type f | sort)
 
-        echo "::notice::Landed ${COUNT} objects in gs://${BUCKET_STAGING}/${PREFIX}/ (stage=staging)"
+        echo "::notice::Landed ${COUNT} objects in gs://${BUCKET_STAGING}/${PREFIX}/ (stage=staging), ${SKIPPED} already present"
         {
           echo "## Upload ${VERSION} (r${BUILD_ID}) → staging"
           echo ""
           echo "| Field | Value |"
           echo "|---|---|"
           echo "| Bucket | \`gs://${BUCKET_STAGING}/${PREFIX}/\` |"
-          echo "| Objects | ${COUNT} |"
+          echo "| Objects uploaded | ${COUNT} |"
+          echo "| Already present | ${SKIPPED} |"
           echo "| stage | \`staging\` |"
         } >> "$GITHUB_STEP_SUMMARY"
 
@@ -211,8 +265,23 @@ runs:
         BUCKET_PACKAGES: ${{ inputs.bucket_packages }}
         ACTOR:           ${{ github.actor }}
         RUN_ID:          ${{ github.run_id }}
+        RETENTION_PW:    ${{ inputs.retention_pw }}
       run: |
         set -eu
+        # A retain-until is an absolute instant, not a sliding TTL — GCS has no
+        # "renew for +N". Windows are expressed as 2d / 1w / 6m / 10y.
+        retain_until() {
+          local w="$1" n unit
+          n="${w%[dwmy]}"; unit="${w##*[0-9]}"
+          case "$unit" in
+            d) date -u -d "+${n} days"   +%Y-%m-%dT%H:%M:%SZ ;;
+            w) date -u -d "+${n} weeks"  +%Y-%m-%dT%H:%M:%SZ ;;
+            m) date -u -d "+${n} months" +%Y-%m-%dT%H:%M:%SZ ;;
+            y) date -u -d "+${n} years"  +%Y-%m-%dT%H:%M:%SZ ;;
+            *) echo "::error::unrecognised retention window '"'"'$w'"'"'" >&2; return 1 ;;
+          esac
+        }
+
         if [ -z "$BUCKET_STAGING" ]; then
           echo "::error::bucket_staging is required for action=promote target_stage=PW"; exit 2
         fi
@@ -273,6 +342,20 @@ runs:
         gcloud storage cp /tmp/manifest.json \
           "gs://${BUCKET_PACKAGES}/${MANIFEST_KEY}" --if-generation-match=0
         echo "::notice::Manifest written: gs://${BUCKET_PACKAGES}/${MANIFEST_KEY} (stage=PW)"
+
+        # B3 — Unlocked retention. Clearable with an explicit override, which is
+        # what keeps un-promote working.
+        if [ -n "${RETENTION_PW:-}" ]; then
+          UNTIL=$(retain_until "$RETENTION_PW")
+          R=0
+          while IFS= read -r obj; do
+            [ -z "$obj" ] && continue
+            gcloud storage objects update "$obj" \
+              --retain-until="$UNTIL" --retention-mode=Unlocked --quiet
+            R=$((R+1))
+          done < <(gcloud storage ls "gs://${BUCKET_PACKAGES}/${PREFIX}/**")
+          echo "::notice::Unlocked retention until ${UNTIL} on ${R} PW objects"
+        fi
         {
           echo "## Promote ${VERSION}: staging → PW"
           echo ""
@@ -281,6 +364,47 @@ runs:
           echo "| Bucket | \`gs://${BUCKET_PACKAGES}/${PREFIX}/\` |"
           echo "| Mode | server-side copy + metadata flip |"
         } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Apply GA retention — written BEFORE the stage flips
+      if: ${{ inputs.action == 'promote' && inputs.target_stage == 'GA' && inputs.retention_ga != '' }}
+      shell: bash
+      env:
+        VERSION:         ${{ inputs.version }}
+        BUCKET_PACKAGES: ${{ inputs.bucket_packages }}
+        RETENTION_GA:    ${{ inputs.retention_ga }}
+      run: |
+        set -eu
+        retain_until() {
+          local w="$1" n unit
+          n="${w%[dwmy]}"; unit="${w##*[0-9]}"
+          case "$unit" in
+            d) date -u -d "+${n} days"   +%Y-%m-%dT%H:%M:%SZ ;;
+            w) date -u -d "+${n} weeks"  +%Y-%m-%dT%H:%M:%SZ ;;
+            m) date -u -d "+${n} months" +%Y-%m-%dT%H:%M:%SZ ;;
+            y) date -u -d "+${n} years"  +%Y-%m-%dT%H:%M:%SZ ;;
+            *) echo "::error::unrecognised retention window '"'"'$w'"'"'" >&2; return 1 ;;
+          esac
+        }
+
+        MANIFEST=$(gcloud storage cat "gs://${BUCKET_PACKAGES}/manifests/${VERSION}.json" 2>/dev/null) || {
+          echo "::error::No manifest for ${VERSION} — promote to PW first"; exit 2; }
+        PREFIX=$(echo "$MANIFEST" | jq -r '.prefix')
+        UNTIL=$(retain_until "$RETENTION_GA")
+
+        # Deliberately before the stage flip, not after. A failure between the
+        # two then leaves an object protected but still labelled RC —
+        # under-claimed, and fixed by re-running, which is safe because a Locked
+        # retain-until can only be increased. The reverse order leaves one
+        # labelled GA and protected by nothing, which every listing reports as
+        # correct.
+        N=0
+        while IFS= read -r obj; do
+          [ -z "$obj" ] && continue
+          gcloud storage objects update "$obj" \
+            --retain-until="$UNTIL" --retention-mode=Locked --quiet
+          N=$((N+1))
+        done < <(gcloud storage ls "gs://${BUCKET_PACKAGES}/${PREFIX}/**")
+        echo "::notice::Locked retention until ${UNTIL} on ${N} objects — irreversible"
 
     - name: Promote PW → RC or RC → GA (metadata-only flip)
       if: ${{ inputs.action == 'promote' && (inputs.target_stage == 'RC' || inputs.target_stage == 'GA') }}
@@ -292,8 +416,21 @@ runs:
         BUCKET_PACKAGES: ${{ inputs.bucket_packages }}
         ACTOR:           ${{ github.actor }}
         RUN_ID:          ${{ github.run_id }}
+        RETENTION_RC:    ${{ inputs.retention_rc }}
       run: |
         set -eu
+        retain_until() {
+          local w="$1" n unit
+          n="${w%[dwmy]}"; unit="${w##*[0-9]}"
+          case "$unit" in
+            d) date -u -d "+${n} days"   +%Y-%m-%dT%H:%M:%SZ ;;
+            w) date -u -d "+${n} weeks"  +%Y-%m-%dT%H:%M:%SZ ;;
+            m) date -u -d "+${n} months" +%Y-%m-%dT%H:%M:%SZ ;;
+            y) date -u -d "+${n} years"  +%Y-%m-%dT%H:%M:%SZ ;;
+            *) echo "::error::unrecognised retention window '"'"'$w'"'"'" >&2; return 1 ;;
+          esac
+        }
+
         MANIFEST_KEY="manifests/${VERSION}.json"
         TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
@@ -323,6 +460,20 @@ runs:
         gcloud storage cp /tmp/manifest.json "gs://${BUCKET_PACKAGES}/${MANIFEST_KEY}"
         echo "PREFIX=${PREFIX}" >> "$GITHUB_ENV"
         echo "::notice::No data copies performed for ${TARGET} promotion"
+
+        # B3 — RC gets Unlocked retention, so un-promote can still clear it. GA's
+        # was written by the previous step, before this flip.
+        if [ "$TARGET" = "RC" ] && [ -n "${RETENTION_RC:-}" ]; then
+          UNTIL=$(retain_until "$RETENTION_RC")
+          R=0
+          while IFS= read -r obj; do
+            [ -z "$obj" ] && continue
+            gcloud storage objects update "$obj" \
+              --retain-until="$UNTIL" --retention-mode=Unlocked --quiet
+            R=$((R+1))
+          done < <(gcloud storage ls "gs://${BUCKET_PACKAGES}/${PREFIX}/**")
+          echo "::notice::Unlocked retention until ${UNTIL} on ${R} RC objects"
+        fi
         {
           echo "## Promote ${VERSION}: ${SOURCE} → ${TARGET}"
           echo ""
@@ -332,13 +483,18 @@ runs:
           echo "| Mode | metadata-only flip (zero bytes copied) |"
         } >> "$GITHUB_STEP_SUMMARY"
 
-    - name: Apply temporary hold on GA objects (never-delete invariant)
-      if: ${{ inputs.action == 'promote' && inputs.target_stage == 'GA' }}
+    - name: Apply temporary hold — fallback when no GA retention is configured
+      if: ${{ inputs.action == 'promote' && inputs.target_stage == 'GA' && inputs.retention_ga == '' }}
       shell: bash
       env:
         BUCKET_PACKAGES: ${{ inputs.bucket_packages }}
       run: |
         set -eu
+        # Only when retention_ga is empty. A Locked retention supersedes this and
+        # was written before the flip: it cannot be released by anyone, whereas a
+        # hold can be lifted by whoever holds the permission — so the hold guards
+        # against accident, not against a compromised credential. Kept so an
+        # unconfigured caller is not left with no never-delete at all.
         N=0
         while IFS= read -r obj; do
           [ -z "$obj" ] && continue
@@ -356,15 +512,45 @@ runs:
         BUCKET_PACKAGES: ${{ inputs.bucket_packages }}
       run: |
         set -eu
-        LATEST_KEY="ring/${CODENAME}/latest.json"
+        # Products present in this release, from the manifest the promotion wrote.
+        PRODUCTS=$(gcloud storage cat "gs://${BUCKET_PACKAGES}/manifests/${VERSION}.json" 2>/dev/null \
+                     | jq -r '[.objects[].product] | map(select(. != "unknown")) | unique | .[]' | sort -u)
+        COUNT=$(echo "$PRODUCTS" | grep -c . || true)
+        if [ "$COUNT" -ne 1 ]; then
+          echo "::error::expected exactly one product in ${VERSION}, found: ${PRODUCTS:-none}"
+          exit 2
+        fi
+        PRODUCT="$PRODUCTS"
+
+        # The pointer is per product and per release family. CODENAME only names a
+        # RING family (haboob/khamsin/...), so anything else would land under
+        # ring/ with a made-up codename.
+        case "$PRODUCT" in
+          ring) LATEST_KEY="ring/${CODENAME}/latest.json" ;;
+          "")   echo "::error::product could not be determined for ${VERSION} — refusing to guess a latest pointer"; exit 2 ;;
+          *)    LATEST_KEY="${PRODUCT}/latest.json" ;;
+        esac
+
         CURRENT=$(gcloud storage cat "gs://${BUCKET_PACKAGES}/${LATEST_KEY}" 2>/dev/null \
-                    | jq -r '.version' || echo "0.0.0.0")
-        V_CUR=$(printf "%d%02d%02d%02d" $(echo "$CURRENT" | tr '.' ' '))
-        V_NEW=$(printf "%d%02d%02d%02d" $(echo "$VERSION" | tr '.' ' '))
+                    | jq -r '.version' || echo "")
+
+        # Compare numerically on the release part only. A pre-release suffix
+        # (4.4.0-preview.19) is not a GA version and must never move the pointer;
+        # feeding it to printf used to abort the step under set -e.
+        version_key() {
+          echo "$1" | sed 's/-.*$//' | awk -F. '{printf "%d%03d%03d%03d", $1, $2, $3, $4}'
+        }
+        case "$VERSION" in
+          *-*) echo "::notice::${VERSION} is a pre-release — latest pointer unchanged"; exit 0 ;;
+        esac
+
+        V_NEW=$(version_key "$VERSION")
+        V_CUR=0
+        [ -n "$CURRENT" ] && V_CUR=$(version_key "$CURRENT")
         if [ "$V_NEW" -gt "$V_CUR" ]; then
           jq -n --arg v "$VERSION" --arg p "${PREFIX}" '{version:$v, prefix:$p}' \
             | gcloud storage cp - "gs://${BUCKET_PACKAGES}/${LATEST_KEY}"
-          echo "::notice::latest (${CODENAME}): ${CURRENT} → ${VERSION}"
+          echo "::notice::latest (${LATEST_KEY}): ${CURRENT:-none} → ${VERSION}"
         else
           echo "::notice::latest unchanged at ${CURRENT} (${VERSION} is not newer)"
         fi
