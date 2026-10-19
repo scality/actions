@@ -347,14 +347,28 @@ runs:
         # what keeps un-promote working.
         if [ -n "${RETENTION_PW:-}" ]; then
           UNTIL=$(retain_until "$RETENTION_PW")
-          R=0
+          R=0; KEPT=0
           while IFS= read -r obj; do
             [ -z "$obj" ] && continue
+            # Only ever extend. A retain-until that is already further out is
+            # left alone: shortening an Unlocked retention needs
+            # --override-unlocked-retention, which this action deliberately does
+            # not hold, and shortening a Locked one is impossible at any price.
+            # Extend-only also makes the windows' relative order irrelevant — a
+            # stage configured shorter than the one before it simply keeps the
+            # longer protection instead of failing.
+            CUR_UNTIL=$(gcloud storage objects describe "$obj" \
+                          --format="value(retention_settings.retain_until_time)" 2>/dev/null || true)
+            if [ -n "$CUR_UNTIL" ] \
+               && [ "$(date -u -d "$CUR_UNTIL" +%s)" -ge "$(date -u -d "$UNTIL" +%s)" ]; then
+              KEPT=$((KEPT+1))
+              continue
+            fi
             gcloud storage objects update "$obj" \
               --retain-until="$UNTIL" --retention-mode=Unlocked --quiet
             R=$((R+1))
           done < <(gcloud storage ls "gs://${BUCKET_PACKAGES}/${PREFIX}/**")
-          echo "::notice::Unlocked retention until ${UNTIL} on ${R} PW objects"
+          echo "::notice::Unlocked retention until ${UNTIL} on ${R} PW objects (${KEPT} already further out)"
         fi
         {
           echo "## Promote ${VERSION}: staging → PW"
@@ -397,14 +411,25 @@ runs:
         # retain-until can only be increased. The reverse order leaves one
         # labelled GA and protected by nothing, which every listing reports as
         # correct.
+        # GA always writes, even when an Unlocked retention already reaches
+        # further out: the mode change from Unlocked to Locked is the point, and
+        # it is what a longer-but-clearable window does not give. The date is
+        # pushed to whichever is later so the write is never a shortening.
         N=0
         while IFS= read -r obj; do
           [ -z "$obj" ] && continue
+          CUR_UNTIL=$(gcloud storage objects describe "$obj" \
+                        --format="value(retention_settings.retain_until_time)" 2>/dev/null || true)
+          TARGET="$UNTIL"
+          if [ -n "$CUR_UNTIL" ] \
+             && [ "$(date -u -d "$CUR_UNTIL" +%s)" -gt "$(date -u -d "$UNTIL" +%s)" ]; then
+            TARGET="$CUR_UNTIL"
+          fi
           gcloud storage objects update "$obj" \
-            --retain-until="$UNTIL" --retention-mode=Locked --quiet
+            --retain-until="$TARGET" --retention-mode=Locked --quiet
           N=$((N+1))
         done < <(gcloud storage ls "gs://${BUCKET_PACKAGES}/${PREFIX}/**")
-        echo "::notice::Locked retention until ${UNTIL} on ${N} objects — irreversible"
+        echo "::notice::Locked retention on ${N} objects — irreversible"
 
     - name: Promote PW → RC or RC → GA (metadata-only flip)
       if: ${{ inputs.action == 'promote' && (inputs.target_stage == 'RC' || inputs.target_stage == 'GA') }}
@@ -465,14 +490,28 @@ runs:
         # was written by the previous step, before this flip.
         if [ "$TARGET" = "RC" ] && [ -n "${RETENTION_RC:-}" ]; then
           UNTIL=$(retain_until "$RETENTION_RC")
-          R=0
+          R=0; KEPT=0
           while IFS= read -r obj; do
             [ -z "$obj" ] && continue
+            # Only ever extend. A retain-until that is already further out is
+            # left alone: shortening an Unlocked retention needs
+            # --override-unlocked-retention, which this action deliberately does
+            # not hold, and shortening a Locked one is impossible at any price.
+            # Extend-only also makes the windows' relative order irrelevant — a
+            # stage configured shorter than the one before it simply keeps the
+            # longer protection instead of failing.
+            CUR_UNTIL=$(gcloud storage objects describe "$obj" \
+                          --format="value(retention_settings.retain_until_time)" 2>/dev/null || true)
+            if [ -n "$CUR_UNTIL" ] \
+               && [ "$(date -u -d "$CUR_UNTIL" +%s)" -ge "$(date -u -d "$UNTIL" +%s)" ]; then
+              KEPT=$((KEPT+1))
+              continue
+            fi
             gcloud storage objects update "$obj" \
               --retain-until="$UNTIL" --retention-mode=Unlocked --quiet
             R=$((R+1))
           done < <(gcloud storage ls "gs://${BUCKET_PACKAGES}/${PREFIX}/**")
-          echo "::notice::Unlocked retention until ${UNTIL} on ${R} RC objects"
+          echo "::notice::Unlocked retention until ${UNTIL} on ${R} RC objects (${KEPT} already further out)"
         fi
         {
           echo "## Promote ${VERSION}: ${SOURCE} → ${TARGET}"
