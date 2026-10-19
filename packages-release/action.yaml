@@ -425,8 +425,28 @@ runs:
              && [ "$(date -u -d "$CUR_UNTIL" +%s)" -gt "$(date -u -d "$UNTIL" +%s)" ]; then
             TARGET="$CUR_UNTIL"
           fi
+
+          # Going from Unlocked to Locked needs --override-unlocked-retention
+          # even when the date only moves further out: GCS treats any change to
+          # an unlocked retention as a modification of it, not as an extension.
+          # Verified against GCS — without the flag the call is refused with
+          # "The unlocked object retention cannot be removed and its retention
+          # period cannot be shortened", which is misleading, since nothing is
+          # being removed or shortened.
+          #
+          # So the identity that promotes to GA needs
+          # storage.objects.overrideUnlockedRetention whenever PW or RC carry a
+          # retention. It never gains the ability to weaken a Locked one — those
+          # are immune to the flag — but it is a real widening, and the reason to
+          # keep promotion on its own identity rather than the uploader's.
+          CUR_MODE=$(gcloud storage objects describe "$obj" \
+                       --format="value(retention_settings.mode)" 2>/dev/null || true)
+          OVERRIDE=""
+          [ "$CUR_MODE" = "Unlocked" ] && OVERRIDE="--override-unlocked-retention"
+
+          # shellcheck disable=SC2086
           gcloud storage objects update "$obj" \
-            --retain-until="$TARGET" --retention-mode=Locked --quiet
+            --retain-until="$TARGET" --retention-mode=Locked $OVERRIDE --quiet
           N=$((N+1))
         done < <(gcloud storage ls "gs://${BUCKET_PACKAGES}/${PREFIX}/**")
         echo "::notice::Locked retention on ${N} objects — irreversible"
