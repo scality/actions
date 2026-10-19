@@ -19,6 +19,9 @@ instead of importing ten separate POC workflows.
 | `gcp_service_account` | ✅ | — | GCS service account email |
 | `bucket_staging` | upload + PW promote | — | Staging bucket name |
 | `bucket_packages` | ✅ | — | Packages bucket name |
+| `retention_pw` | | — | PW retention window (`2d`/`1w`/`6m`). **Unlocked** — clearable, so un-promote keeps working |
+| `retention_rc` | | — | RC retention window. Unlocked, like PW |
+| `retention_ga` | | — | GA retention window, written **Locked**. Empty falls back to a temporary hold |
 
 ## Example — RING release workflow
 
@@ -94,3 +97,43 @@ poc-publish ──→  action=publish            (visibility → external)
 
 Operational workflows (verify, housekeeping, lock, index) remain in the
 `S3-Packages-POC-IT` repo — they are not release-pipeline concerns.
+
+## Retention (B3)
+
+Per-object retention is what makes a release tamper-resistant rather than merely
+hard to delete by accident.
+
+| Stage | Mode | Why |
+|---|---|---|
+| PW, RC | `Unlocked` | clearable with an explicit override, so un-promote can still remove the copy |
+| GA | **`Locked`** | cannot be shortened or cleared by anyone — not the bucket owner, not the project owner, not after it expires |
+
+Two properties worth knowing before choosing a window:
+
+- **A locked retain-until can only ever be increased.** Start short and extend;
+  a long window forecloses every correction, and expiry does not relax it — it
+  only makes the object deletable.
+- **Extending needs no special permission**, so whatever job re-stamps these
+  dates can hold that capability alone and be structurally unable to weaken a
+  lock. Something has to re-stamp before expiry, or the protection simply lapses.
+
+GA's retention is written **before** the stage flips to GA, not after. A failure
+between the two then leaves an object protected but still labelled RC —
+under-claimed, and fixed by re-running, which is safe because the retain-until
+can only go up. The reverse order leaves an object labelled GA and protected by
+nothing, which every listing reports as correct.
+
+With `retention_ga` empty the action falls back to a temporary hold. That guards
+against accident, not against a compromised credential: a hold can be lifted by
+whoever holds the permission.
+
+## Re-running is safe
+
+`action=upload` compares the `sha256` of each file against what is already in
+staging. Identical content is skipped; **different content under the same version
+is refused**, not overwritten.
+
+That is deliberate on two counts. Overwriting in GCS is a delete plus a create,
+so it needs `storage.objects.delete` — which a least-privilege deployer does not
+have and should not. And publishing different bytes under a version that already
+exists is not something the release model supports: ship a new version.
