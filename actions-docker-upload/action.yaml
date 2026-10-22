@@ -37,7 +37,7 @@ runs:
 
     - name: Login to Registry
       if: ${{ inputs.access_token }}
-      uses: docker/login-action@v2
+      uses: docker/login-action@v3
       with:
         registry: ${{ inputs.registry_url }}
         username: ${{ inputs.registry_username || github.repository_owner }}
