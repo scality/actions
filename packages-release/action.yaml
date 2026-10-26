@@ -352,8 +352,9 @@ runs:
             [ -z "$obj" ] && continue
             # Only ever extend. A retain-until that is already further out is
             # left alone: shortening an Unlocked retention needs
-            # --override-unlocked-retention, which this action deliberately does
-            # not hold, and shortening a Locked one is impossible at any price.
+            # --override-unlocked-retention, which this step does not pass, and
+            # shortening a Locked one is impossible at any price. (GA does pass
+            # it, but only to change the mode — never to shorten.)
             # Extend-only also makes the windows' relative order irrelevant — a
             # stage configured shorter than the one before it simply keeps the
             # longer protection instead of failing.
@@ -515,8 +516,9 @@ runs:
             [ -z "$obj" ] && continue
             # Only ever extend. A retain-until that is already further out is
             # left alone: shortening an Unlocked retention needs
-            # --override-unlocked-retention, which this action deliberately does
-            # not hold, and shortening a Locked one is impossible at any price.
+            # --override-unlocked-retention, which this step does not pass, and
+            # shortening a Locked one is impossible at any price. (GA does pass
+            # it, but only to change the mode — never to shorten.)
             # Extend-only also makes the windows' relative order irrelevant — a
             # stage configured shorter than the one before it simply keeps the
             # longer protection instead of failing.
