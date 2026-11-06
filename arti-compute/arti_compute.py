@@ -477,9 +477,16 @@ class ArtiCompute:
                 try:
                     # Installers for upgrade
                     upgrade_installer = self._ring_installer
+                    last_err = None
                     while True:     # Not endless, loop will eventually fail
-                        upgrade_from = self._get_precedent_major(
-                            upgrade_installer, version_type='stable')
+                        try:
+                            upgrade_from = self._get_precedent_major(
+                                upgrade_installer, version_type='stable')
+                        except VersionError:
+                            if last_err is None:
+                                raise
+                            raise VersionError(
+                                str(last_err), version=last_err.version) from last_err
                         try:
                             self.is_valid_upgrade(upgrade_from=upgrade_from)
                             self._ring_upgrade_from = self._find_latest_stable(
@@ -498,8 +505,12 @@ class ArtiCompute:
                         except (ArtifactError, VersionError) as err:
                             if self._is_released_GA(err.version or upgrade_from):
                                 raise   # We should have an installer for that version...
+                            last_err = err
                             # Try with lower version (using fake name to fool _get_ring_version)...
-                            upgrade_installer = f"fake-name-{upgrade_from}.r12345"
+                            padded = upgrade_from.split('.')
+                            while len(padded) < 3:
+                                padded.append('0')
+                            upgrade_installer = f"fake-name-{'.'.join(padded)}.r12345"
                 except (ArtifactError, VersionError):
                     if 'upgrade' in self.jobs:
                         raise   # Problem only if upgrade job is requested
