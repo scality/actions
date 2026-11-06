@@ -342,9 +342,13 @@ class ArtiCompute:
         self._upgrade_scos_version = None
         self._upgradeprev_adi_iso = None
         self._upgradeprev_scos_version = None
-        # Target versions resolved from the current ADI manifest entry
+        # Target RING/S3 versions taken from the ADI manifest entry; only
+        # set when they really come from the ADI ISO (explicit ADI artifact),
+        # otherwise the RING build installers define them.
         self._adi_ring_version = None
         self._adi_s3_version = None
+        self._ring_from_adi = False
+        self._s3_from_adi = False
         self._upgrade_ring_version_display = None
         self._upgrade_s3_version_display = None
         self._is_scalityos = is_scality_managed_os(self.os_name)
@@ -374,7 +378,9 @@ class ArtiCompute:
         # not trigger external RING/S3 resolution unless the workflow also
         # passes explicit overloads.
         self._adi_entry_cache = None
-        if self._is_scalityos and adi_artifact and not ring_explicit:
+        self._ring_from_adi = (self._is_scalityos and bool(adi_artifact)
+                               and not ring_explicit)
+        if self._ring_from_adi:
             self._adi_manifest = self._fetch_adi_manifest_history(
                 github_token=github_token, adi_ref=self._adi_branch)
             _adi_version = self._extract_adi_version(adi_artifact)
@@ -406,6 +412,7 @@ class ArtiCompute:
         # ADI repo and extra packages.
         _s3_from_adi = (self._is_scalityos and not self.s3_artifact
                         and bool(adi_artifact))
+        self._s3_from_adi = _s3_from_adi
 
         # When an ADI artifact is provided on scalityos with no RING
         # artifact, skip the RING/S3 installer lookup entirely —
@@ -1641,13 +1648,13 @@ class ArtiCompute:
         if adi_entry:
             ring_info = adi_entry.get('components', {}).get('ring', {})
             manifest_ring_version = ring_info.get('version', '')
-            if manifest_ring_version:
+            if manifest_ring_version and self._ring_from_adi:
                 self._adi_ring_version = self._get_ring_version(
                     manifest_ring_version)
 
             s3_info = adi_entry.get('components', {}).get('s3c', {})
             manifest_s3_version = s3_info.get('version', '')
-            if manifest_s3_version:
+            if manifest_s3_version and self._s3_from_adi:
                 self._adi_s3_version = manifest_s3_version
 
         # Upgrade version — determine the previous ADI entry to upgrade from.
