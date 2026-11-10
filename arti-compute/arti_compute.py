@@ -2,6 +2,9 @@
 """Compute artifact input data for installer tests workflow"""
 
 import argparse
+import functools
+import itertools
+import json
 import logging
 import os
 import re
@@ -102,6 +105,8 @@ def _get_ring_major():
 # Add a fake "sbom" job type, as sbom workflow is using us to get installer url
 # In this case, we don't care about upgrade/upgradeprev or s3 stuff
 JOB_TYPE = ("install", "upgrade", "upgradeprev", "sbom")
+# Only finds the offline installers, for several OSes: see find_offline_installers()
+OFFLINE_JOB_TYPE = "offline"
 # RING previous version types
 VERSION_TYPE = ("stable", "current", "previous")
 
@@ -214,6 +219,12 @@ DEFAULT_ARTIFACT_URL = 'https://artifacts.scality.net/builds'
 DEFAULT_SEARCH_URL = 'https://artifacts.scality.net/search'
 RING_BUILD = 'github:scality:ring'
 PROMOTED_BUILD = f'{RING_BUILD}:promoted-'
+STAGING_BUILD = f'{RING_BUILD}:staging-'
+
+# <version>.r<revision>.<hash> of a RING installer or offline installer name
+RING_INSTALLER_ID_REGEX = re.compile(
+    r'^scality-ring-(?:offline-)?(?P<id>\d+(?:\.\d+){3}\.r\d+\.(?P<hash>[0-9a-f]+))_'
+)
 
 ADI_BUILD = 'github:scality:adi'
 ADI_PROMOTED_BUILD = f'{ADI_BUILD}:promoted-'
@@ -305,7 +316,8 @@ class ArtiCompute:
     def __init__(self, jobs, os_name, ring_artifact, s3_artifact, offline, auth,
                  upgrade_from_version=None, architecture=ARCHITECTURE[0], suffix=None, region=None,
                  adi_artifact=None, github_token=None, ring_explicit=False,
-                 adi_upgrade_from_version=None, adi_branch=None):
+                 adi_upgrade_from_version=None, adi_branch=None,
+                 offline_builds=None):
         # Accept an optional OS minor (e.g. rhel9.6): keep os_name major-only
         # for installer/S3/validity logic, and remember the minor so snapshot
         # selection can pick the closest matching minor (see _select_snapshot).
@@ -327,6 +339,7 @@ class ArtiCompute:
         self.architecture = architecture
 
         self._ring_installer = None
+        self._offline_ring = None
         self._s3_installer = None
         self._ring_upgrade_from = None
         self._s3_upgrade_from = None
@@ -436,6 +449,14 @@ class ArtiCompute:
             logger.info(
                 "Skipping RING/S3 installer lookup — "
                 "versions will be resolved from ADI artifact")
+
+        if OFFLINE_JOB_TYPE in self.jobs:
+            if self._ring_installer and not self._is_scalityos:
+                self._offline_ring = self._find_offline_installer(
+                    self._ring_installer, self.os_name, self.os_minor,
+                    builds=[*(offline_builds or []), self.ring_artifact],
+                    auth=self.auth)
+            return
 
         if "sbom" in self.jobs:
             # If sbom, we just want installer, skip everything else
@@ -558,6 +579,18 @@ class ArtiCompute:
     def ring_installer(self):
         """Get ring installer URL"""
         return self._ring_installer or ""
+
+    @property
+    def offline_ring(self):
+        """Get ring offline installer URL"""
+        return self._offline_ring or ""
+
+    @property
+    def offline_dist(self):
+        """Get offline-generator.yaml dist name, None when it has no offline installer"""
+        if self._is_scalityos or self._ring_installer in (None, UNSUPPORTED):
+            return None
+        return self._get_offline_dist(self.os_name, self.os_minor)
 
     @property
     def s3_installer(self):
@@ -962,6 +995,80 @@ class ArtiCompute:
                     return os.path.join(base_url, 'installer', line), guessed_ring_version
         logger.warning(f"Found no {os_name} RING installer for RING {guessed_ring_version}")
         return None, guessed_ring_version
+
+    @staticmethod
+    @functools.lru_cache(maxsize=None)
+    def _list_build(build, auth=None):
+        """List the files of a build, recursively (or the builds, when empty)
+
+        Cached: the full build list is 0.5 MB and the offline job type lists
+        the same builds for each OS.
+        """
+        response = requests.get(
+            os.path.join(DEFAULT_ARTIFACT_URL, build, '?format=txt'),
+            auth=auth,
+        )
+        if not response.ok:
+            raise ArtifactError(f"_list_build(): {response.reason} ({response.status_code})")
+        return tuple(response.text.splitlines())
+
+    @classmethod
+    def _get_offline_dist(cls, os_name, os_minor):
+        """Get the offline-generator.yaml dist name of an OS
+
+        rhel8 + 8.10 -> rhel8.10, rocky9 -> rocky9
+        """
+        if os_minor:
+            return re.sub(r'\d+$', '', os_name) + os_minor
+        return os_name
+
+    @classmethod
+    def _find_offline_installer(cls, ring_installer, os_name, os_minor, builds=(), auth=None):
+        """Find the offline installer (without S3C) of a RING installer
+
+        offline-generator.yaml makes it for New-release and build-and-tests
+        runs, in their own build, which is not the build of the RING
+        installer. Search the given builds, then every build of the commit.
+        The match is on <version>.r<revision>.<hash>, so the offline
+        installer holds the same RING as the RING installer.
+
+        Return: offline installer URL, or None
+        """
+        m = RING_INSTALLER_ID_REGEX.match(os.path.basename(ring_installer))
+        if not m:
+            logger.warning(f"Cannot extract RING version and hash from '{ring_installer}'")
+            return None
+        dist = cls._get_offline_dist(os_name, os_minor)
+        reOffline = re.compile(
+            rf'^offline_installers/scality-ring-offline-{re.escape(m.group("id"))}'
+            rf'_{re.escape(dist)}_\d{{12}}\.run$')
+
+        logger.info(f"Searching {dist} RING offline installer for {m.group('id')}")
+
+        # Staging build names hold the commit hash on 10 characters
+        commit_prefix = f"{STAGING_BUILD}{m.group('hash')[:10]}."
+
+        def commit_builds():
+            # Lazy: read the list of all the builds only when the given builds
+            # do not hold the offline installer
+            for line in cls._list_build('', auth):
+                if line.startswith(commit_prefix):
+                    yield line.rstrip('/')
+
+        seen = set()
+        for build in itertools.chain((b for b in builds if b), commit_builds()):
+            if build in seen:
+                continue
+            seen.add(build)
+            # Several runs of the generator: take the most recent (timestamp)
+            found = sorted(line for line in cls._list_build(build, auth) if reOffline.match(line))
+            if found:
+                url = os.path.join(DEFAULT_ARTIFACT_URL, build, found[-1])
+                logger.debug(f"Found {dist} RING offline installer {url}")
+                return url
+
+        logger.warning(f"Found no {dist} RING offline installer for {m.group('id')}")
+        return None
 
     @classmethod
     def _find_s3_installer(cls, base_url, os_name, offline, auth=None):
@@ -1819,6 +1926,33 @@ class ArtiCompute:
                 print("unset UPGRADEPREV_FROM_SNAPSHOT", file=outfile)
 
 
+def find_offline_installers(os_names, outfile=sys.stdout, **kwargs):
+    """Print bash variables for the offline installers of several OSes
+
+    os_names: (name, normalized name) pairs; the output uses the names as the
+    caller gave them, so that a test matrix can look up its own OS.
+
+    OFFLINE_INSTALLERS is a JSON object, OS name -> offline installer URL.
+    OFFLINE_MISSING_DISTS uses the offline-generator.yaml dist names, so that
+    a workflow can generate the missing ones before its test matrix.
+    scalityos, adi and the OSes the RING version does not support have no
+    offline installer, and are not missing.
+    """
+    found = {}
+    missing_dists = []
+    for os_name, normalized in os_names:
+        artifact = ArtiCompute(jobs=[OFFLINE_JOB_TYPE], os_name=normalized, **kwargs)
+        if artifact.offline_dist is None:
+            continue
+        if artifact.offline_ring:
+            found[os_name] = artifact.offline_ring
+        else:
+            missing_dists.append(artifact.offline_dist)
+    print("# ==== Offline", file=outfile)
+    print(f"OFFLINE_INSTALLERS='{json.dumps(found, separators=(',', ':'))}'", file=outfile)
+    print(f"OFFLINE_MISSING_DISTS='{' '.join(missing_dists)}'", file=outfile)
+
+
 def get_options():
     """Parse and return command line arguments."""
 
@@ -1852,12 +1986,16 @@ def get_options():
             )
         return os_name
 
+    # Validated after parsing: --job-type offline also needs the names as given
     parser.add_argument('--os',
-                        help=f'Name of the OS ({",".join(OS)} or scalityos[-X.Y[-N]])',
-                        type=_validate_os,
+                        help=f'Name of the OS ({",".join(OS)} or scalityos[-X.Y[-N]]), '
+                             f'several with --job-type {OFFLINE_JOB_TYPE}',
+                        type=str.lower,
+                        nargs='+',
                         required=True)
-    parser.add_argument('--job-type', choices=JOB_TYPE,
-                        help=f'Job to perform ({",".join(JOB_TYPE)}) - all of them if not specified',
+    parser.add_argument('--job-type', choices=(*JOB_TYPE, OFFLINE_JOB_TYPE),
+                        help=f'Job to perform ({",".join(JOB_TYPE)}) - all of them if not specified; '
+                             f'{OFFLINE_JOB_TYPE} alone finds the offline installers only',
                         nargs='+',
                         default=list(JOB_TYPE))
     parser.add_argument('--ring-artifact',
@@ -1922,6 +2060,12 @@ def get_options():
                              'RING_VERSION_FILE / GITHUB_WORKSPACE)')
     parser.add_argument('--output-file',
                         help='Write bash variables to this file instead of stdout')
+    parser.add_argument('--offline-build',
+                        dest='offline_builds',
+                        action='append',
+                        default=[],
+                        help=f'With --job-type {OFFLINE_JOB_TYPE}: build of an offline-generator.yaml run '
+                             'to search too (repeatable)')
 
     # Get required actions (hack)
     req_actions = []
@@ -1941,6 +2085,18 @@ def get_options():
 
     opts = parser.parse_args()
     opts.job_type = list(set(opts.job_type))    # Remove duplicates
+
+    if OFFLINE_JOB_TYPE in opts.job_type and len(opts.job_type) > 1:
+        parser.error(f"--job-type {OFFLINE_JOB_TYPE} cannot be used with other job types")
+    if OFFLINE_JOB_TYPE not in opts.job_type and len(opts.os) > 1:
+        parser.error(f"several --os need --job-type {OFFLINE_JOB_TYPE}")
+    if OFFLINE_JOB_TYPE not in opts.job_type and opts.offline_builds:
+        parser.error(f"--offline-build needs --job-type {OFFLINE_JOB_TYPE}")
+    opts.os_names = opts.os
+    try:
+        opts.os = [_validate_os(os_name) for os_name in opts.os]
+    except argparse.ArgumentTypeError as err:
+        parser.error(f"argument --os: {err}")
 
     if opts.quiet:
         # Disable logging
@@ -1990,9 +2146,7 @@ if __name__ == "__main__":
                 )
             sys.exit(0)
 
-        artifact = ArtiCompute(
-            jobs=args.job_type,
-            os_name=args.os,
+        artifact_args = dict(
             ring_artifact=args.ring_artifact,
             s3_artifact=args.s3_artifact,
             offline=args.offline,
@@ -2006,19 +2160,21 @@ if __name__ == "__main__":
             ring_explicit=args.ring_explicit,
             adi_upgrade_from_version=args.adi_upgrade_from_version,
             adi_branch=args.adi_branch,
+            offline_builds=args.offline_builds,
         )
-        if args.output_file:
-            with open(args.output_file, 'w', encoding='utf-8') as outfile:
-                artifact.as_bash_vars(
+        outfile = open(args.output_file, 'w', encoding='utf-8') if args.output_file else sys.stdout
+        try:
+            if OFFLINE_JOB_TYPE in args.job_type:
+                find_offline_installers(zip(args.os_names, args.os), outfile=outfile, **artifact_args)
+            else:
+                ArtiCompute(jobs=args.job_type, os_name=args.os[0], **artifact_args).as_bash_vars(
                     use_snapshots=args.use_snapshots,
                     normalize=args.normalize,
                     outfile=outfile,
                 )
-        else:
-            artifact.as_bash_vars(
-                use_snapshots=args.use_snapshots,
-                normalize=args.normalize,
-            )
+        finally:
+            if outfile is not sys.stdout:
+                outfile.close()
     except (ArtifactError, VersionError, SnapshotError, RuntimeError) as err:
         logger.critical(str(err).split(': ', 1)[-1])
         if args.debug:

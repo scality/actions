@@ -40,14 +40,50 @@ Then `source` the output file as today:
     version-file: VERSION
 ```
 
+### Offline installers
+
+`offline-generator.yaml` (RING repository) makes the RING offline installers
+(without S3C) of a commit, in the build of its own run. `job-type: offline`
+finds them for several OSes, and does nothing else. A workflow uses it before
+its test matrix, to generate the missing ones one time, and to give the list
+to the tests:
+
+```yaml
+- uses: scality/actions/arti-compute@main
+  with:
+    os: redhat8.10 rocky8.10
+    ring-artifact: ${{ needs.get-artifacts-name.outputs.artifacts-name }}
+    auth: ${{ secrets.ARTIFACTS_USER }}:${{ secrets.ARTIFACTS_PASSWORD }}
+    job-type: offline
+    output-file: /tmp/offline-vars
+```
+
+The output file holds:
+
+- `OFFLINE_INSTALLERS`: a JSON object, OS name (as given in `os`) -> offline
+  installer URL.
+- `OFFLINE_MISSING_DISTS`: the `offline-generator.yaml` dist names of the
+  missing ones, for example `rhel8.10 rocky9`. scalityos, adi and the OSes that
+  the RING version does not support are not missing.
+
+An offline installer matches when it has the same `<version>.r<revision>.<hash>`
+as the RING installer of `ring-artifact`. The search order is:
+
+1. the `offline-build` builds,
+2. the `ring-artifact` build,
+3. all the RING staging builds of the commit.
+
+A generator run of another commit writes into a build that step 3 does not
+find. After a generation, give its build in `offline-build`.
+
 ## Inputs
 
 | Input | Required | Description |
 |-------|----------|-------------|
-| `os` | yes\* | OS name (`rhel8`, `rocky9`, `scalityos`, …) |
+| `os` | yes\* | OS name (`rhel8`, `rocky9`, `scalityos`, …); several with `job-type: offline` |
 | `ring-artifact` | yes\* | RING artifact build id |
 | `auth` | yes\* | `user:password` for artifacts.scality.net |
-| `job-type` | no | Space-separated: `install`, `upgrade`, `upgradeprev`, `sbom` |
+| `job-type` | no | Space-separated: `install`, `upgrade`, `upgradeprev`, `sbom`; or `offline` alone |
 | `s3-artifact` | no | S3 / Federation artifact override |
 | `adi-artifact` | no | ADI artifact (scalityos) |
 | `adi-branch` | no | ADI git ref for manifests |
@@ -60,6 +96,7 @@ Then `source` the output file as today:
 | `debug` / `quiet` / `online` | no | Logging / offline mode flags |
 | `suffix` / `region` | no | Snapshot suffix / AWS region |
 | `check-tech-train` | no | Validate `TECH_TRAIN` only (skips artifact inputs) |
+| `offline-build` | no | With `job-type: offline`: builds of `offline-generator.yaml` runs to search too |
 | `output-file` | no | Write bash vars here (else stdout) |
 | `github-token` | no | For ADI GitHub API |
 | `version-file` | no | Path to RING `VERSION` |
