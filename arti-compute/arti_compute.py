@@ -485,6 +485,7 @@ class ArtiCompute:
                     # Installers for upgrade
                     upgrade_installer = self._ring_installer
                     last_err = None
+                    tried = []
                     while True:     # Not endless, loop will eventually fail
                         try:
                             upgrade_from = self._get_precedent_major(
@@ -493,7 +494,9 @@ class ArtiCompute:
                             if last_err is None:
                                 raise
                             raise VersionError(
-                                str(last_err), version=last_err.version) from last_err
+                                f"No usable stable RING version to upgrade from "
+                                f"(tried {', '.join(tried)}): {last_err}",
+                                version=last_err.version) from last_err
                         try:
                             self.is_valid_upgrade(upgrade_from=upgrade_from)
                             self._ring_upgrade_from = self._find_latest_stable(
@@ -513,6 +516,7 @@ class ArtiCompute:
                             if self._is_released_GA(err.version or upgrade_from):
                                 raise   # We should have an installer for that version...
                             last_err = err
+                            tried.append(upgrade_from)
                             # Try with lower version (using fake name to fool _get_ring_version)...
                             padded = upgrade_from.split('.')
                             while len(padded) < 3:
