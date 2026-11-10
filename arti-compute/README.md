@@ -43,17 +43,10 @@ Then `source` the output file as today:
 ### Offline installers
 
 `offline-generator.yaml` (RING repository) makes the RING offline installers
-(without S3C) of a commit, in the build of its own run. `find-offline: 'true'`
-writes `OFFLINE_RING`, the offline installer that holds the same
-`<version>.r<revision>.<hash>` as `INSTALLER_RING`. It is empty when there is
-none. The search order is:
-
-1. the `offline-build` builds,
-2. the `ring-artifact` build,
-3. all the RING staging builds of the commit.
-
-`job-type: offline` with several OSes only finds the offline installers. A
-workflow uses it before its test matrix, to generate the missing ones one time:
+(without S3C) of a commit, in the build of its own run. `job-type: offline`
+finds them for several OSes, and does nothing else. A workflow uses it before
+its test matrix, to generate the missing ones one time, and to give the list
+to the tests:
 
 ```yaml
 - uses: scality/actions/arti-compute@main
@@ -65,10 +58,23 @@ workflow uses it before its test matrix, to generate the missing ones one time:
     output-file: /tmp/offline-vars
 ```
 
-The output file holds `OFFLINE_INSTALLERS` (the URLs found) and
-`OFFLINE_MISSING_DISTS` (`offline-generator.yaml` dist names, for example
-`rhel8.10 rocky9`). scalityos, adi and the OSes that the RING version does not
-support are not missing.
+The output file holds:
+
+- `OFFLINE_INSTALLERS`: a JSON object, OS name (as given in `os`) -> offline
+  installer URL.
+- `OFFLINE_MISSING_DISTS`: the `offline-generator.yaml` dist names of the
+  missing ones, for example `rhel8.10 rocky9`. scalityos, adi and the OSes that
+  the RING version does not support are not missing.
+
+An offline installer matches when it has the same `<version>.r<revision>.<hash>`
+as the RING installer of `ring-artifact`. The search order is:
+
+1. the `offline-build` builds,
+2. the `ring-artifact` build,
+3. all the RING staging builds of the commit.
+
+A generator run of another commit writes into a build that step 3 does not
+find. After a generation, give its build in `offline-build`.
 
 ## Inputs
 
@@ -90,8 +96,7 @@ support are not missing.
 | `debug` / `quiet` / `online` | no | Logging / offline mode flags |
 | `suffix` / `region` | no | Snapshot suffix / AWS region |
 | `check-tech-train` | no | Validate `TECH_TRAIN` only (skips artifact inputs) |
-| `find-offline` | no | Also write `OFFLINE_RING`, the RING offline installer |
-| `offline-build` | no | Space-separated builds to search first for the offline installer |
+| `offline-build` | no | With `job-type: offline`: builds of `offline-generator.yaml` runs to search too |
 | `output-file` | no | Write bash vars here (else stdout) |
 | `github-token` | no | For ADI GitHub API |
 | `version-file` | no | Path to RING `VERSION` |

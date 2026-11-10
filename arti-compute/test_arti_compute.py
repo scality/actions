@@ -482,6 +482,49 @@ def test_find_offline_installers(monkeypatch):
     }
     monkeypatch.setattr(ac, "ArtiCompute", lambda jobs, os_name, **kwargs: results[os_name])
     out = io.StringIO()
-    ac.find_offline_installers(list(results), outfile=out)
-    assert "OFFLINE_INSTALLERS='https://x/offline-rhel8.10.run'\n" in out.getvalue()
-    assert "OFFLINE_MISSING_DISTS='rocky8.10'\n" in out.getvalue()
+    # The map keys are the OS names as given (redhat), not the normalized ones (rhel)
+    os_names = [("redhat8.10", "rhel8.10"), ("rocky8.10", "rocky8.10"),
+                ("redhat9.7", "rhel9.7"), ("scalityos", "scalityos")]
+    ac.find_offline_installers(os_names, outfile=out)
+    assert out.getvalue().splitlines()[1:] == [
+        """OFFLINE_INSTALLERS='{"redhat8.10":"https://x/offline-rhel8.10.run"}'""",
+        "OFFLINE_MISSING_DISTS='rocky8.10'",
+    ]
+
+
+def test_offline_job_type_skips_the_other_lookups(monkeypatch):
+    """--job-type offline: only the RING installer and its offline installer."""
+    monkeypatch.setattr(ArtiCompute, "_find_ring_installer", classmethod(lambda cls, *a, **k: (RING_INSTALLER, None)))
+    monkeypatch.setattr(ArtiCompute, "_find_offline_installer", classmethod(lambda cls, *a, **k: "https://x/o.run"))
+
+    def _no_s3(*args, **kwargs):
+        raise AssertionError("S3 lookup with --job-type offline")
+
+    monkeypatch.setattr(ArtiCompute, "_find_latest_s3_installer", classmethod(_no_s3))
+    obj = ArtiCompute(jobs=[ac.OFFLINE_JOB_TYPE], os_name="rocky9", ring_artifact=RING_BUILD,
+                      s3_artifact=None, offline=True, auth=None)
+    assert obj.offline_ring == "https://x/o.run"
+
+
+@pytest.mark.parametrize("argv, error", [
+    (["--job-type", "offline", "install"], "cannot be used with other job types"),
+    (["--job-type", "install", "--os", "rocky9", "rhel9"], "several --os need"),
+    (["--job-type", "install", "--offline-build", "b"], "--offline-build needs"),
+    (["--job-type", "offline", "--os", "rhel7"], "Invalid OS"),
+])
+def test_offline_options_errors(monkeypatch, capsys, argv, error):
+    base = ["arti_compute.py", "--ring-artifact", RING_BUILD, "--auth", "u:p"]
+    if "--os" not in argv:
+        argv = [*argv, "--os", "rocky9"]
+    monkeypatch.setattr(sys, "argv", [*base, *argv])
+    with pytest.raises(SystemExit):
+        ac.get_options()
+    assert error in capsys.readouterr().err
+
+
+def test_offline_options_keep_the_os_names(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["arti_compute.py", "--ring-artifact", RING_BUILD, "--auth", "u:p",
+                                      "--job-type", "offline", "--os", "Redhat9.7", "rocky9"])
+    opts = ac.get_options()
+    assert opts.os_names == ["redhat9.7", "rocky9"]
+    assert opts.os == ["rhel9.7", "rocky9"]

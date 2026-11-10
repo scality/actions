@@ -90,12 +90,8 @@ inputs:
       Other required inputs can be omitted.
     required: false
     default: ''
-  find-offline:
-    description: 'Also find the RING offline installer of the RING installer (OFFLINE_RING)'
-    required: false
-    default: 'false'
   offline-build:
-    description: 'Space-separated builds to search first for the offline installer'
+    description: 'With job-type offline: space-separated builds of offline-generator.yaml runs to search too'
     required: false
     default: ''
   output-file:
@@ -202,9 +198,6 @@ runs:
         fi
         if [ -n "${{ inputs.region }}" ]; then
           ARGS+=(--region "${{ inputs.region }}")
-        fi
-        if [ "${{ inputs.find-offline }}" = "true" ]; then
-          ARGS+=(--find-offline)
         fi
         for BUILD in ${{ inputs.offline-build }}; do
           ARGS+=(--offline-build "$BUILD")

@@ -4,6 +4,7 @@
 import argparse
 import functools
 import itertools
+import json
 import logging
 import os
 import re
@@ -316,7 +317,7 @@ class ArtiCompute:
                  upgrade_from_version=None, architecture=ARCHITECTURE[0], suffix=None, region=None,
                  adi_artifact=None, github_token=None, ring_explicit=False,
                  adi_upgrade_from_version=None, adi_branch=None,
-                 find_offline=False, offline_builds=None):
+                 offline_builds=None):
         # Accept an optional OS minor (e.g. rhel9.6): keep os_name major-only
         # for installer/S3/validity logic, and remember the minor so snapshot
         # selection can pick the closest matching minor (see _select_snapshot).
@@ -449,14 +450,15 @@ class ArtiCompute:
                 "Skipping RING/S3 installer lookup — "
                 "versions will be resolved from ADI artifact")
 
-        if ((find_offline or OFFLINE_JOB_TYPE in self.jobs)
-                and self._ring_installer and not self._is_scalityos):
-            self._offline_ring = self._find_offline_installer(
-                self._ring_installer, self.os_name, self.os_minor,
-                builds=[*(offline_builds or []), self.ring_artifact],
-                auth=self.auth)
+        if OFFLINE_JOB_TYPE in self.jobs:
+            if self._ring_installer and not self._is_scalityos:
+                self._offline_ring = self._find_offline_installer(
+                    self._ring_installer, self.os_name, self.os_minor,
+                    builds=[*(offline_builds or []), self.ring_artifact],
+                    auth=self.auth)
+            return
 
-        if "sbom" in self.jobs or OFFLINE_JOB_TYPE in self.jobs:
+        if "sbom" in self.jobs:
             # If sbom, we just want installer, skip everything else
             return
 
@@ -1863,7 +1865,6 @@ class ArtiCompute:
         else:
             print("# ==== Install", file=outfile)
             print(f"INSTALLER_RING={self.ring_installer}", file=outfile)
-            print(f"OFFLINE_RING={self.offline_ring}", file=outfile)
             print(f"INSTALLER_S3={self.s3_installer}", file=outfile)
             print(f"RING_VERSION={self.ring_version}", file=outfile)
             print(f"S3_VERSION={self.s3_version}", file=outfile)
@@ -1928,24 +1929,27 @@ class ArtiCompute:
 def find_offline_installers(os_names, outfile=sys.stdout, **kwargs):
     """Print bash variables for the offline installers of several OSes
 
-    A workflow uses it before its test matrix, to generate the missing
-    offline installers one time for all the tests. OFFLINE_MISSING_DISTS uses
-    the offline-generator.yaml dist names. scalityos, adi and the OSes the
-    RING version does not support have no offline installer, and are not
-    missing.
+    os_names: (name, normalized name) pairs; the output uses the names as the
+    caller gave them, so that a test matrix can look up its own OS.
+
+    OFFLINE_INSTALLERS is a JSON object, OS name -> offline installer URL.
+    OFFLINE_MISSING_DISTS uses the offline-generator.yaml dist names, so that
+    a workflow can generate the missing ones before its test matrix.
+    scalityos, adi and the OSes the RING version does not support have no
+    offline installer, and are not missing.
     """
-    found = []
+    found = {}
     missing_dists = []
-    for os_name in os_names:
-        artifact = ArtiCompute(jobs=[OFFLINE_JOB_TYPE], os_name=os_name, **kwargs)
+    for os_name, normalized in os_names:
+        artifact = ArtiCompute(jobs=[OFFLINE_JOB_TYPE], os_name=normalized, **kwargs)
         if artifact.offline_dist is None:
             continue
         if artifact.offline_ring:
-            found.append(artifact.offline_ring)
+            found[os_name] = artifact.offline_ring
         else:
             missing_dists.append(artifact.offline_dist)
     print("# ==== Offline", file=outfile)
-    print(f"OFFLINE_INSTALLERS='{' '.join(found)}'", file=outfile)
+    print(f"OFFLINE_INSTALLERS='{json.dumps(found, separators=(',', ':'))}'", file=outfile)
     print(f"OFFLINE_MISSING_DISTS='{' '.join(missing_dists)}'", file=outfile)
 
 
@@ -1982,10 +1986,11 @@ def get_options():
             )
         return os_name
 
+    # Validated after parsing: --job-type offline also needs the names as given
     parser.add_argument('--os',
                         help=f'Name of the OS ({",".join(OS)} or scalityos[-X.Y[-N]]), '
                              f'several with --job-type {OFFLINE_JOB_TYPE}',
-                        type=_validate_os,
+                        type=str.lower,
                         nargs='+',
                         required=True)
     parser.add_argument('--job-type', choices=(*JOB_TYPE, OFFLINE_JOB_TYPE),
@@ -2055,14 +2060,12 @@ def get_options():
                              'RING_VERSION_FILE / GITHUB_WORKSPACE)')
     parser.add_argument('--output-file',
                         help='Write bash variables to this file instead of stdout')
-    parser.add_argument('--find-offline',
-                        action='store_true',
-                        help='Also find the RING offline installer of the RING installer (OFFLINE_RING)')
     parser.add_argument('--offline-build',
                         dest='offline_builds',
                         action='append',
                         default=[],
-                        help='Build to search first for the offline installer (repeatable)')
+                        help=f'With --job-type {OFFLINE_JOB_TYPE}: build of an offline-generator.yaml run '
+                             'to search too (repeatable)')
 
     # Get required actions (hack)
     req_actions = []
@@ -2087,6 +2090,13 @@ def get_options():
         parser.error(f"--job-type {OFFLINE_JOB_TYPE} cannot be used with other job types")
     if OFFLINE_JOB_TYPE not in opts.job_type and len(opts.os) > 1:
         parser.error(f"several --os need --job-type {OFFLINE_JOB_TYPE}")
+    if OFFLINE_JOB_TYPE not in opts.job_type and opts.offline_builds:
+        parser.error(f"--offline-build needs --job-type {OFFLINE_JOB_TYPE}")
+    opts.os_names = opts.os
+    try:
+        opts.os = [_validate_os(os_name) for os_name in opts.os]
+    except argparse.ArgumentTypeError as err:
+        parser.error(f"argument --os: {err}")
 
     if opts.quiet:
         # Disable logging
@@ -2150,13 +2160,12 @@ if __name__ == "__main__":
             ring_explicit=args.ring_explicit,
             adi_upgrade_from_version=args.adi_upgrade_from_version,
             adi_branch=args.adi_branch,
-            find_offline=args.find_offline,
             offline_builds=args.offline_builds,
         )
         outfile = open(args.output_file, 'w', encoding='utf-8') if args.output_file else sys.stdout
         try:
             if OFFLINE_JOB_TYPE in args.job_type:
-                find_offline_installers(args.os, outfile=outfile, **artifact_args)
+                find_offline_installers(zip(args.os_names, args.os), outfile=outfile, **artifact_args)
             else:
                 ArtiCompute(jobs=args.job_type, os_name=args.os[0], **artifact_args).as_bash_vars(
                     use_snapshots=args.use_snapshots,
