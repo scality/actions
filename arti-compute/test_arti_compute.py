@@ -8,7 +8,9 @@ Table-driven, no network / AWS / artifact lookups: instances are built with
 directly. Every OS, version and snapshot is passed explicitly, so the file
 is independent of the RING branch the script was taken from.
 """
+import io
 import os
+import re
 import sys
 
 import pytest
@@ -380,3 +382,168 @@ def test_tech_train_missing_key_raises():
     with pytest.raises(RuntimeError):
         ArtiCompute._get_precedent_major(
             "scality-ring-9.9.9.0.run", version_type="previous")
+
+
+# --- Upgrade fallback and scalityos RING version (RD-2740) ------------------
+
+class _FakeResponse:
+    ok = True
+    reason = "OK"
+    status_code = 200
+
+    def __init__(self, text):
+        self.text = text
+
+
+def _install_fake_artifacts(monkeypatch, os_dir, promoted):
+    """Patch requests.get with a fake artifact server and neutralise
+    everything else __init__ would reach for (GA tags, S3, snapshots)."""
+    suffix = "/installer/?format=txt"
+
+    def fake_get(url, auth=None):
+        if url.endswith(suffix):
+            build = os.path.basename(url[:-len(suffix)])
+            version = re.search(r"\d+(\.\d+){3}", build).group(0)
+            return _FakeResponse(f"scality-ring-{version}.{os_dir}.run\n")
+        return _FakeResponse("".join(f"{p}/\n" for p in promoted))
+
+    monkeypatch.setattr(ac.requests, "get", fake_get)
+    monkeypatch.setattr(
+        ArtiCompute, "_is_released_GA", staticmethod(lambda version: []))
+    monkeypatch.setattr(
+        ArtiCompute, "_find_latest_s3_installer",
+        staticmethod(lambda *a, **k: "s3-offline-10.0.0.0.tar.gz"))
+    monkeypatch.setattr(
+        ArtiCompute, "_find_snapshot", staticmethod(lambda *a, **k: "snap"))
+
+
+@pytest.mark.parametrize("os_name,os_dir", [
+    ("rocky9", "rocky_9"),
+    ("rhel9", "rhel_9"),
+])
+def test_upgrade_fallback_skips_unpromoted_minor(monkeypatch, os_name, os_dir):
+    """Regression: 10.1 is not promoted, so the fallback must continue to the
+    promoted 10.0.x instead of failing to parse the short precedent version."""
+    _install_fake_artifacts(
+        monkeypatch, os_dir,
+        promoted=["github:scality:ring:promoted-10.0.1.0",
+                  "github:scality:ring:promoted-10.0.2.0"])
+    obj = ArtiCompute(
+        jobs=["upgrade"], os_name=os_name,
+        ring_artifact="github:scality:ring:10.2.0.0", s3_artifact=None,
+        offline=False, auth=None)
+    assert obj.ring_upgrade_from.endswith(
+        f"promoted-10.0.2.0/installer/scality-ring-10.0.2.0.{os_dir}.run")
+    assert obj.ring_upgrade_from_version == "10.0.2.0"
+
+
+def test_upgrade_fallback_nothing_found_error_message(monkeypatch):
+    """Regression: with nothing promoted, the error must be the real
+    'No matching stable RING version' one, not a version parse error."""
+    _install_fake_artifacts(
+        monkeypatch, "rocky_9", promoted=[])
+    with pytest.raises(ac.VersionError) as excinfo:
+        ArtiCompute(
+            jobs=["upgrade"], os_name="rocky9",
+            ring_artifact="github:scality:ring:10.2.0.0", s3_artifact=None,
+            offline=False, auth=None)
+    err = excinfo.value
+    assert "Cannot extract RING version" not in str(err)
+    assert ("No matching stable RING version found" in str(err)
+            or "No matching stable RING version found" in str(err.__cause__))
+    assert err.__cause__ is not None
+
+
+def test_upgrade_no_fallback_for_promoted_target_guard(monkeypatch):
+    """Guard (passes before and after the fix): a 9.5.3.0 target resolves to
+    the latest promoted 9.5.2.x directly, without any fallback."""
+    _install_fake_artifacts(
+        monkeypatch, "rhel_9",
+        promoted=["github:scality:ring:promoted-9.5.1.0",
+                  "github:scality:ring:promoted-9.5.2.0",
+                  "github:scality:ring:promoted-9.5.2.1"])
+    obj = ArtiCompute(
+        jobs=["upgrade"], os_name="rhel9",
+        ring_artifact="github:scality:ring:9.5.3.0", s3_artifact=None,
+        offline=False, auth=None)
+    assert obj.ring_upgrade_from_version == "9.5.2.1"
+
+
+_ADI_ENTRY = {
+    "adi_version": "1.0.0",
+    "components": {
+        "ring": {"version": "10.1.0.0"},
+        "s3c": {"version": "10.1.0.0"},
+        "scos": {"version": "9.7-10"},
+    },
+}
+
+
+def _install_fake_adi(monkeypatch):
+    monkeypatch.setattr(
+        ArtiCompute, "_fetch_adi_current_entry",
+        classmethod(lambda cls, *a, **k: _ADI_ENTRY))
+    monkeypatch.setattr(
+        ArtiCompute, "_fetch_adi_manifest_history",
+        classmethod(lambda cls, *a, **k: [_ADI_ENTRY]))
+    monkeypatch.setattr(
+        ArtiCompute, "_find_adi_entry_by_version",
+        staticmethod(lambda manifest, version: _ADI_ENTRY))
+    monkeypatch.setattr(
+        ArtiCompute, "_find_latest_adi_artifact",
+        classmethod(lambda cls, *a, **k: "github:scality:adi:promoted-1.0.0"))
+    monkeypatch.setattr(
+        ArtiCompute, "_find_adi_iso",
+        classmethod(lambda cls, *a, **k: "https://example/scality-adi-1.0.0.iso"))
+    monkeypatch.setattr(
+        ArtiCompute, "_find_latest_s3_installer",
+        staticmethod(lambda *a, **k: "s3-offline-10.2.0.0.tar.gz"))
+    monkeypatch.setattr(
+        ArtiCompute, "_find_ring_installer",
+        classmethod(lambda cls, *a, **k: (
+            "https://example/installer/scality-ring-10.2.0.0.run", "10.2.0.0")))
+
+
+def _bash_vars(obj):
+    out = io.StringIO()
+    obj.as_bash_vars(outfile=out)
+    return out.getvalue().splitlines()
+
+
+def test_scalityos_ring_version_from_ring_build(monkeypatch):
+    """Regression: without an ADI artifact the RING build defines the RING
+    version; the ADI manifest RING version must not override it."""
+    _install_fake_adi(monkeypatch)
+    obj = ArtiCompute(
+        jobs=["install"], os_name="scalityos",
+        ring_artifact="github:scality:ring:10.2.0.0", s3_artifact=None,
+        offline=False, auth=None)
+    assert obj.ring_version == "10.2.0.0"
+    lines = _bash_vars(obj)
+    assert "RING_VERSION=10.2.0.0" in lines
+    assert "RING_VERSION=10.1.0.0" not in lines
+
+
+def test_scalityos_explicit_adi_keeps_manifest_ring_version_guard(monkeypatch):
+    """Guard (passes before and after the fix): an explicit ADI artifact
+    without ring_explicit takes the RING version from the ADI manifest."""
+    _install_fake_adi(monkeypatch)
+    obj = ArtiCompute(
+        jobs=["install"], os_name="scalityos",
+        ring_artifact="", s3_artifact=None, offline=False, auth=None,
+        adi_artifact="github:scality:adi:promoted-1.0.0")
+    assert obj.ring_version == "10.1.0.0"
+    assert "RING_VERSION=10.1.0.0" in _bash_vars(obj)
+
+
+def test_scalityos_explicit_adi_with_ring_explicit_uses_installer(monkeypatch):
+    """New behaviour (differs from main, which let the ADI manifest override
+    it): with ring_explicit=True the installer version wins."""
+    _install_fake_adi(monkeypatch)
+    obj = ArtiCompute(
+        jobs=["install"], os_name="scalityos",
+        ring_artifact="github:scality:ring:10.2.0.0", s3_artifact=None,
+        offline=False, auth=None,
+        adi_artifact="github:scality:adi:promoted-1.0.0", ring_explicit=True)
+    assert obj.ring_version == "10.2.0.0"
+    assert "RING_VERSION=10.2.0.0" in _bash_vars(obj)
