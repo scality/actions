@@ -346,6 +346,7 @@ class ArtiCompute:
         # set when they really come from the ADI ISO (explicit ADI artifact),
         # otherwise the RING build installers define them.
         self._adi_ring_version = None
+        self._adi_manifest_ring_version = None
         self._adi_s3_version = None
         self._ring_from_adi = False
         self._s3_from_adi = False
@@ -625,6 +626,11 @@ class ArtiCompute:
     def adi_version(self):
         """Get ADI version (scalityos only)"""
         return self._adi_version or ""
+
+    @property
+    def adi_ring_version(self):
+        """Get RING version from ADI manifest (scalityos only)"""
+        return self._adi_manifest_ring_version or ""
 
     @property
     def scos_version(self):
@@ -1652,6 +1658,8 @@ class ArtiCompute:
         if adi_entry:
             ring_info = adi_entry.get('components', {}).get('ring', {})
             manifest_ring_version = ring_info.get('version', '')
+            if manifest_ring_version:
+                self._adi_manifest_ring_version = manifest_ring_version
             if manifest_ring_version and self._ring_from_adi:
                 self._adi_ring_version = self._get_ring_version(
                     manifest_ring_version)
