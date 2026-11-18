@@ -29,4 +29,21 @@ if [ -z "${IP}" ]; then
     echo "ERROR: ${NETDEV} has no IPv4 address" >&2
     exit 1
 fi
+
+# Check the link carries RC traffic: a ping-pong between client and server.
+# The client retries until the server listens, and a server left without a
+# client must not outlive the script.
+ibv_rc_pingpong -d "${LINK}" -g 1 &
+SERVER_PID=$!
+trap 'kill "${SERVER_PID}" 2> /dev/null || true' EXIT
+for attempt in 1 2 3 4 5; do
+    sleep 1
+    ibv_rc_pingpong -d "${LINK}" -g 1 "${IP}" && break
+    if [ "${attempt}" -eq 5 ]; then
+        echo "ERROR: no RC ping-pong over ${LINK}" >&2
+        exit 1
+    fi
+done
+wait "${SERVER_PID}"
+
 echo "ip=${IP}" >> "${GITHUB_OUTPUT}"

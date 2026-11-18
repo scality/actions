@@ -40,14 +40,6 @@ jobs:
           fi
           rpm -q liburing
 
-      - name: Check the link carries RDMA traffic
-        run: |
-          ibv_rc_pingpong -d "$RDMA_LINK" -g 1 &
-          SERVER_PID=$!
-          sleep 1
-          ibv_rc_pingpong -d "$RDMA_LINK" -g 1 "${{ steps.rdma.outputs.ip }}"
-          wait "$SERVER_PID"
-
       # Runners are reused between jobs, so a second setup must succeed over
       # the link the first one left behind.
       - name: Set up SoftRoCE over the existing link
