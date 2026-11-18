@@ -1823,6 +1823,7 @@ class ArtiCompute:
                 print("# ==== ADI (scalityos)", file=outfile)
                 print(f"ADI_ISO={self.adi_iso}", file=outfile)
                 print(f"ADI_VERSION={self.adi_version}", file=outfile)
+                print(f"ADI_RING_VERSION={self.adi_ring_version}", file=outfile)
                 print(f"SCOS_VERSION={self.scos_version}", file=outfile)
 
             print(file=outfile)
