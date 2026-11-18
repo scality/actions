@@ -10,9 +10,12 @@ READY='All processes started'
 # argument
 mapfile -t EXTRA < <(printf '%s\n' "${EXTRA_ARGS}" | sed -e 's/[[:space:]]*$//' -e '/^$/d')
 
+# RDMA registration pins memory. miniring and its daemons inherit the limit of
+# this shell, and run as the caller so the files they write are the caller's.
+sudo prlimit --pid $$ --memlock=unlimited
+
 # Start miniring $NODES nodes $DISKS disks and record its pid
-sudo prlimit --memlock=unlimited \
-    "${MINIRING_BIN}" spawn -n "${NODES}" -d "${DISKS}" \
+"${MINIRING_BIN}" spawn -n "${NODES}" -d "${DISKS}" \
     --node-bin-path "${NODE_BIN_PATH}" \
     --disk-bin-path "${DISK_BIN_PATH}" \
     "${EXTRA[@]}" > "${LOG}" 2>&1 &

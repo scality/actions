@@ -15,5 +15,8 @@ enable io_uring (biziod refuses to start without it), and output the address
 to bind RDMA endpoints to.
 
 ## start-miniring
-Spawn a miniring cluster in the background, wait until it reports readiness,
-and record its pid. Stopping it is left to the caller.
+Spawn a miniring cluster in the background as the caller, with the memlock
+limit RDMA needs lifted, wait until it reports readiness, and record its pid.
+Stopping it is left to the caller. RDMA GETs read the biziod data device, so
+the caller must be able to read it, as the scality user must in production;
+pass `--disk-paths` to a directory on such a device.
