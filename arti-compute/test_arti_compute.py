@@ -547,3 +547,119 @@ def test_scalityos_explicit_adi_with_ring_explicit_uses_installer(monkeypatch):
         adi_artifact="github:scality:adi:promoted-1.0.0", ring_explicit=True)
     assert obj.ring_version == "10.2.0.0"
     assert "RING_VERSION=10.2.0.0" in _bash_vars(obj)
+
+
+# --- ADI / RING pairing guard on scalityos upgrade (RD-2822) ----------------
+
+_ADI_PREV_ENTRY = {
+    "adi_version": "0.9.0",
+    "components": {
+        "ring": {"version": "10.0.0.0"},
+        "s3c": {"version": "10.0.0.0"},
+        "scos": {"version": "9.6-1"},
+    },
+}
+
+_ADI_ISO_URL = "https://example/scality-adi-1.0.0.iso"
+
+
+def _install_pairing_fakes(monkeypatch, build_version, adi_ring_version):
+    _install_fake_adi(monkeypatch)
+    entry = {
+        "adi_version": "1.0.0",
+        "components": {
+            "ring": {"version": adi_ring_version},
+            "s3c": {"version": "10.1.0.0"},
+            "scos": {"version": "9.7-10"},
+        },
+    }
+    manifest = {"history": [_ADI_PREV_ENTRY, entry]}
+    monkeypatch.setattr(
+        ArtiCompute, "_fetch_adi_current_entry",
+        classmethod(lambda cls, *a, **k: entry))
+    monkeypatch.setattr(
+        ArtiCompute, "_fetch_adi_manifest_history",
+        classmethod(lambda cls, *a, **k: manifest))
+    monkeypatch.setattr(
+        ArtiCompute, "_find_adi_entry_by_version",
+        staticmethod(lambda m, version: entry))
+    monkeypatch.setattr(
+        ArtiCompute, "_find_promoted_adi_artifact",
+        classmethod(lambda cls, *a, **k: "github:scality:adi:promoted-0.9.0"))
+    monkeypatch.setattr(
+        ArtiCompute, "_find_adi_iso",
+        classmethod(lambda cls, *a, **k: _ADI_ISO_URL))
+    monkeypatch.setattr(
+        ArtiCompute, "_find_adi_snapshot",
+        classmethod(lambda cls, *a, **k: "adi-snap"))
+    monkeypatch.setattr(
+        ArtiCompute, "_find_ring_installer",
+        classmethod(lambda cls, *a, **k: (
+            f"https://example/installer/scality-ring-{build_version}.run",
+            build_version)))
+
+
+def _pairing_obj(jobs, build_version, **kwargs):
+    return ArtiCompute(
+        jobs=jobs, os_name="scalityos",
+        ring_artifact=f"github:scality:ring:{build_version}",
+        s3_artifact=None, offline=False, auth=None, **kwargs)
+
+
+@pytest.mark.parametrize("build,adi_ring", [
+    ("10.2.0.0", "10.1.0.0"),
+    ("10.1.0.1", "10.1.0.0"),
+])
+def test_scalityos_upgrade_adi_ring_mismatch_unsupported(
+        monkeypatch, build, adi_ring):
+    """An ADI bundling a different RING base than the build cannot upgrade."""
+    _install_pairing_fakes(monkeypatch, build, adi_ring)
+    obj = _pairing_obj(["upgrade"], build, adi_artifact=None)
+    assert obj.upgrade_adi_iso == ac.UNSUPPORTED
+    assert obj.adi_iso
+    assert obj.ring_version == build
+    lines = _bash_vars(obj)
+    assert "UPGRADE_ADI_ISO=__UNSUPPORTED__" in lines
+    assert f"ADI_RING_VERSION={adi_ring}" in lines
+
+
+def test_scalityos_upgrade_adi_ring_match_guard(monkeypatch):
+    """Guard (passes before and after the fix): matching RING base keeps the
+    previous ADI ISO."""
+    _install_pairing_fakes(monkeypatch, "10.1.0.0", "10.1.0.0")
+    obj = _pairing_obj(["upgrade"], "10.1.0.0", adi_artifact=None)
+    assert obj.upgrade_adi_iso == _ADI_ISO_URL
+    assert "UPGRADE_ADI_ISO=__UNSUPPORTED__" not in _bash_vars(obj)
+
+
+@pytest.mark.parametrize("adi_ring", ["10.1.0.0_pw1", "10.1.0.0_rc1"])
+def test_scalityos_upgrade_adi_ring_suffix_guard(monkeypatch, adi_ring):
+    """Guard (passes before and after the fix): _pw/_rc suffixes in the ADI
+    manifest do not count as a mismatch."""
+    _install_pairing_fakes(monkeypatch, "10.1.0.0", adi_ring)
+    obj = _pairing_obj(["upgrade"], "10.1.0.0", adi_artifact=None)
+    assert obj.upgrade_adi_iso != ac.UNSUPPORTED
+    assert obj.upgrade_adi_iso == _ADI_ISO_URL
+
+
+def test_scalityos_upgrade_explicit_adi_guard(monkeypatch):
+    """Guard (passes before and after the fix): with the RING taken from the
+    explicit ADI there is no pairing check."""
+    _install_pairing_fakes(monkeypatch, "10.2.0.0", "10.1.0.0")
+    obj = ArtiCompute(
+        jobs=["upgrade"], os_name="scalityos", ring_artifact="",
+        s3_artifact=None, offline=False, auth=None,
+        adi_artifact="github:scality:adi:promoted-1.0.0")
+    assert obj.upgrade_adi_iso != ac.UNSUPPORTED
+    assert obj.ring_version == "10.1.0.0"
+    assert "UPGRADE_ADI_ISO=__UNSUPPORTED__" not in _bash_vars(obj)
+
+
+def test_scalityos_install_adi_ring_mismatch_guard(monkeypatch):
+    """Guard (passes before and after the fix): an install-only job is not
+    affected by an ADI/RING mismatch."""
+    _install_pairing_fakes(monkeypatch, "10.2.0.0", "10.1.0.0")
+    obj = _pairing_obj(["install"], "10.2.0.0", adi_artifact=None)
+    assert obj.adi_iso == _ADI_ISO_URL
+    assert obj.upgrade_adi_iso != ac.UNSUPPORTED
+    assert "UPGRADE_ADI_ISO=__UNSUPPORTED__" not in _bash_vars(obj)
