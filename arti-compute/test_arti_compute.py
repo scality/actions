@@ -547,3 +547,194 @@ def test_scalityos_explicit_adi_with_ring_explicit_uses_installer(monkeypatch):
         adi_artifact="github:scality:adi:promoted-1.0.0", ring_explicit=True)
     assert obj.ring_version == "10.2.0.0"
     assert "RING_VERSION=10.2.0.0" in _bash_vars(obj)
+
+
+# ---- ADI line (MAJOR.MINOR) resolution ------------------------------------
+
+@pytest.mark.parametrize("version,line,expected", [
+    ("1.2.0", "1.2", True),
+    ("1.2.13", "1.2", True),
+    ("1.12.0", "1.2", False),
+    ("1.2", "1.2", False),
+    ("1.3.0", "1.2", False),
+    (None, "1.2", False),
+])
+def test_is_in_adi_line(version, line, expected):
+    assert ArtiCompute._is_in_adi_line(version, line) is expected
+
+
+@pytest.mark.parametrize("value,valid", [
+    ("1.2", True), ("1.2.3", True), ("10.20.30", True),
+    ("1", False), ("1.2.3.4", False), ("v1.2", False), ("", False),
+])
+def test_adi_version_arg(value, valid):
+    if valid:
+        assert ac._adi_version_arg(value) == value
+    else:
+        with pytest.raises(ac.argparse.ArgumentTypeError):
+            ac._adi_version_arg(value)
+
+
+_HISTORY = {"history": [
+    {"adi_version": "1.0.0"}, {"adi_version": "1.0.9"},
+    {"adi_version": "1.0.10"}, {"adi_version": "1.1.0"},
+]}
+
+
+@pytest.mark.parametrize("line,expected", [
+    ("1.0", "1.0.10"), ("1.1", "1.1.0"), ("1.2", None),
+])
+def test_find_latest_adi_entry_in_line(line, expected):
+    entry = ArtiCompute._find_latest_adi_entry_in_line(_HISTORY, line)
+    assert (entry["adi_version"] if entry else None) == expected
+
+
+class _Response:
+    def __init__(self, text="", status=200):
+        self.text = text
+        self.ok = status == 200
+        self.status_code = status
+        self.reason = "OK" if self.ok else "Not Found"
+
+
+def _staging(sha, number):
+    return f"github:scality:adi:staging-{sha}.Build-ADI-ISO.{number}"
+
+
+# Build number -> ISO version. Build 125 (1.2.1) never succeeded; build 126
+# has no ISO (failed early).
+_BUILDS = {
+    _staging("aaaaaaaaaa", 112): "1.0.3",
+    _staging("bbbbbbbbbb", 118): "1.1.0",
+    _staging("cccccccccc", 124): "1.2.0",
+    _staging("dddddddddd", 125): "1.2.1",
+    _staging("eeeeeeeeee", 126): None,
+}
+_LAST_SUCCESS = {
+    "1.0.3": _staging("aaaaaaaaaa", 112),
+    "1.1.0": _staging("bbbbbbbbbb", 118),
+    "1.2.0": _staging("cccccccccc", 124),
+}
+_PROMOTED = ["1.0.1", "1.0.2", "1.4.0"]
+
+
+def _fake_artifacts_get(url, auth=None, **_):
+    builds_root = ac.DEFAULT_ARTIFACT_URL + "/"
+    if url == builds_root + "?format=txt":
+        names = list(_BUILDS) + [
+            f"{ac.ADI_PROMOTED_BUILD}{v}" for v in _PROMOTED]
+        names.append("github:scality:ring:promoted-10.1.0.0")
+        return _Response("\n".join(f"{n}/" for n in names))
+    search_root = ac.DEFAULT_SEARCH_URL + (
+        "/last_success/version/github/scality/adi/Build-ADI-ISO/")
+    if url.startswith(search_root):
+        return _Response(_LAST_SUCCESS.get(url[len(search_root):], ""))
+    for name, version in _BUILDS.items():
+        if url == builds_root + name + "/?format=txt":
+            iso = f"scality-adi-{version}.iso" if version else ""
+            return _Response(f"sbom/x.json\n{iso}")
+    for version in _PROMOTED:
+        if url == builds_root + f"{ac.ADI_PROMOTED_BUILD}{version}/?format=txt":
+            return _Response(f"scality-adi-{version}.iso")
+    return _Response(status=404)
+
+
+@pytest.mark.parametrize("line,expected", [
+    # Newest build is 1.2.1, but it never succeeded
+    ("1.2", ("1.2.0", _staging("cccccccccc", 124))),
+    # Found past the newer builds of other lines
+    ("1.0", ("1.0.3", _staging("aaaaaaaaaa", 112))),
+    ("1.1", ("1.1.0", _staging("bbbbbbbbbb", 118))),
+    # No staging build: newest promoted version of the line
+    ("1.4", ("1.4.0", f"{ac.ADI_PROMOTED_BUILD}1.4.0")),
+])
+def test_find_latest_adi_line_build(monkeypatch, line, expected):
+    monkeypatch.setattr(ac.requests, "get", _fake_artifacts_get)
+    assert ArtiCompute._find_latest_adi_line_build(line) == expected
+
+
+def test_find_latest_adi_line_build_unknown_line(monkeypatch):
+    monkeypatch.setattr(ac.requests, "get", _fake_artifacts_get)
+    with pytest.raises(ac.ArtifactError, match="line 1.3"):
+        ArtiCompute._find_latest_adi_line_build("1.3")
+
+
+def _scalityos(monkeypatch, **kwargs):
+    """Build a scalityos ArtiCompute with fake ADI lookups; return the
+    instance and the refs given to _fetch_adi_current_entry."""
+    _install_fake_adi(monkeypatch)
+    refs = []
+
+    def fetch_current_entry(cls, github_token=None, adi_ref=None,
+                            adi_version=None):
+        refs.append(adi_ref)
+        return dict(_ADI_ENTRY, adi_version=adi_version)
+
+    monkeypatch.setattr(
+        ArtiCompute, "_fetch_adi_current_entry",
+        classmethod(fetch_current_entry))
+    monkeypatch.setattr(
+        ArtiCompute, "_find_latest_adi_line_build",
+        classmethod(lambda cls, line, auth=None: (
+            "1.2.0", _staging("cccccccccc", 124))))
+    monkeypatch.setattr(
+        ArtiCompute, "_find_latest_adi_artifact",
+        classmethod(lambda cls, version, auth=None: _staging(
+            "ffffffffff", 130)))
+    obj = ArtiCompute(
+        os_name="scalityos", ring_artifact="github:scality:ring:10.2.0.0",
+        s3_artifact=None, offline=False, auth=None, **kwargs)
+    return obj, refs
+
+
+def test_scalityos_adi_version_line(monkeypatch):
+    """A line takes its latest build, and the components come from
+    manifest.yaml at the commit of that build, not at the branch top."""
+    obj, refs = _scalityos(
+        monkeypatch, jobs=["install"], adi_version="1.2",
+        adi_branch="development/1")
+    assert obj.adi_version == "1.2.0"
+    assert refs == ["cccccccccc"]
+    assert "ADI_VERSION=1.2.0" in _bash_vars(obj)
+
+
+def test_scalityos_adi_version_exact(monkeypatch):
+    obj, refs = _scalityos(
+        monkeypatch, jobs=["install"], adi_version="1.2.5")
+    assert obj.adi_version == "1.2.5"
+    assert refs == ["ffffffffff"]
+
+
+def test_scalityos_adi_upgrade_from_line(monkeypatch):
+    """A line in --adi-upgrade-from takes its latest release in history."""
+    promoted = []
+
+    def find_promoted(cls, version, auth=None):
+        promoted.append(version)
+        return f"{ac.ADI_PROMOTED_BUILD}{version}"
+
+    monkeypatch.setattr(
+        ArtiCompute, "_find_promoted_adi_artifact",
+        classmethod(find_promoted))
+    monkeypatch.setattr(
+        ArtiCompute, "_find_adi_snapshot", lambda self, *a, **k: None)
+    _install_fake_adi(monkeypatch)
+    monkeypatch.setattr(
+        ArtiCompute, "_fetch_adi_manifest_history",
+        classmethod(lambda cls, *a, **k: _HISTORY))
+    obj = ArtiCompute.__new__(ArtiCompute)
+    obj.__dict__.update(
+        jobs=["upgrade"], auth=None, nb_nodes=3, suffix=None,
+        _is_scalityos=True, _requested_adi_version="1.1",
+        _adi_branch=None, _adi_manifest=None, _adi_iso=None,
+        _adi_version=None, _scos_version=None, _ring_from_adi=False,
+        _s3_from_adi=False, _adi_entry_cache=None)
+    monkeypatch.setattr(
+        ArtiCompute, "_find_latest_adi_line_build",
+        classmethod(lambda cls, line, auth=None: (
+            "1.1.0", f"{ac.ADI_PROMOTED_BUILD}1.1.0")))
+    obj._resolve_adi(adi_upgrade_from="1.0")
+    assert promoted == ["1.0.10"]
+
+    with pytest.raises(ac.ArtifactError, match="line 1.5"):
+        obj._resolve_adi(adi_upgrade_from="1.5")
