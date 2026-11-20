@@ -219,6 +219,11 @@ ADI_BUILD = 'github:scality:adi'
 ADI_PROMOTED_BUILD = f'{ADI_BUILD}:promoted-'
 ADI_MANIFEST_HISTORY_API_URL = 'https://api.github.com/repos/scality/adi/contents/manifest-history.yaml'
 ADI_MANIFEST_API_URL = 'https://api.github.com/repos/scality/adi/contents/manifest.yaml'
+ADI_STAGING_BUILD_REGEX = re.compile(
+    rf'^{re.escape(ADI_BUILD)}:staging-(?P<sha>[0-9a-f]+)'
+    r'\.Build-ADI-ISO\.(?P<number>\d+)$')
+ADI_LINE_REGEX = re.compile(r'^\d+\.\d+$')
+ADI_VERSION_REGEX = re.compile(r'^\d+\.\d+\.\d+$')
 
 DEFAULT_REGION = 'eu-north-1'
 DEFAULT_SUFFIX = 'GA'
@@ -305,7 +310,8 @@ class ArtiCompute:
     def __init__(self, jobs, os_name, ring_artifact, s3_artifact, offline, auth,
                  upgrade_from_version=None, architecture=ARCHITECTURE[0], suffix=None, region=None,
                  adi_artifact=None, github_token=None, ring_explicit=False,
-                 adi_upgrade_from_version=None, adi_branch=None):
+                 adi_upgrade_from_version=None, adi_branch=None,
+                 adi_version=None):
         # Accept an optional OS minor (e.g. rhel9.6): keep os_name major-only
         # for installer/S3/validity logic, and remember the minor so snapshot
         # selection can pick the closest matching minor (see _select_snapshot).
@@ -355,6 +361,7 @@ class ArtiCompute:
         self._is_explicit_adi = bool(ADI_OS_REGEX.match(self.os_name))
         self._adi_manifest = None
         self._adi_branch = adi_branch
+        self._requested_adi_version = adi_version
 
         self.upgrade_error_msg = ""
         self.upgradeprev_error_msg = ""
@@ -1526,6 +1533,108 @@ class ArtiCompute:
         return adi_build
 
     @staticmethod
+    def _is_in_adi_line(version, line):
+        """True when *version* is a MAJOR.MINOR.PATCH release of *line*.
+
+        A strict prefix match: line '1.2' takes '1.2.3', not '1.12.0'.
+        """
+        return (bool(version) and bool(ADI_VERSION_REGEX.match(version))
+                and version.startswith(f'{line}.'))
+
+    @classmethod
+    def _find_latest_adi_line_build(cls, line, auth=None):
+        """Find the newest successful ADI build of a MAJOR.MINOR line.
+
+        Build names do not hold the ADI version, and the search API matches
+        exact versions only. So read the ISO version of the staging builds,
+        newest first, and keep the first version of the line that has a
+        successful build. Fall back to the newest promoted version of the
+        line.
+
+        Returns (adi_version, adi_build).
+        """
+        logger.info(f"Searching latest ADI build of line {line}")
+        response = requests.get(
+            os.path.join(DEFAULT_ARTIFACT_URL, '?format=txt'), auth=auth)
+        if not response.ok:
+            raise ArtifactError(
+                f"Cannot list ADI artifacts: "
+                f"{response.reason} ({response.status_code})")
+
+        staging_builds = []
+        promoted_versions = []
+        for line_text in response.text.splitlines():
+            adi_build = line_text.rstrip('/')
+            match = ADI_STAGING_BUILD_REGEX.match(adi_build)
+            if match:
+                staging_builds.append((int(match.group('number')), adi_build))
+                continue
+            promoted_version = cls._extract_adi_version(adi_build)
+            if cls._is_in_adi_line(promoted_version, line):
+                promoted_versions.append(promoted_version)
+
+        checked_versions = set()
+        for _, adi_build in sorted(staging_builds, reverse=True):
+            try:
+                adi_iso = cls._find_adi_iso(
+                    os.path.join(DEFAULT_ARTIFACT_URL, adi_build), auth=auth)
+                adi_version = cls._extract_version_from_iso(adi_iso)
+            except (ArtifactError, ValueError):
+                continue
+            if (not cls._is_in_adi_line(adi_version, line)
+                    or adi_version in checked_versions):
+                continue
+            checked_versions.add(adi_version)
+            search = requests.get(
+                os.path.join(
+                    DEFAULT_SEARCH_URL,
+                    'last_success/version/github/scality/adi/Build-ADI-ISO',
+                    adi_version),
+                auth=auth)
+            if search.ok and search.text.strip():
+                success_build = search.text.splitlines()[0].strip().rstrip('/')
+                logger.info(
+                    f"Latest ADI build of line {line}: ADI {adi_version} "
+                    f"({success_build})")
+                return adi_version, success_build
+            logger.warning(f"ADI {adi_version} has no successful build")
+
+        if promoted_versions:
+            adi_version = natsorted(promoted_versions)[-1]
+            adi_build = cls._find_promoted_adi_artifact(adi_version, auth=auth)
+            return adi_version, adi_build
+
+        raise ArtifactError(f"No successful ADI build of line {line}")
+
+    def _fetch_adi_entry_for_build(self, adi_build, adi_version, github_token):
+        """Get the ADI manifest entry that describes an ADI build.
+
+        A staging build holds its ADI commit: read manifest.yaml at that
+        commit, so the components match the ISO and not a branch top. A
+        promoted build is a release: read it from manifest-history.yaml.
+        Returns None when no entry is found (SBOM fallback in the caller).
+        """
+        match = ADI_STAGING_BUILD_REGEX.match(adi_build)
+        if match:
+            return self._fetch_adi_current_entry(
+                github_token=github_token, adi_ref=match.group('sha'),
+                adi_version=adi_version)
+        if self._adi_manifest is None:
+            self._adi_manifest = self._fetch_adi_manifest_history(
+                github_token=github_token, adi_ref=self._adi_branch)
+        return self._find_adi_entry_by_version(self._adi_manifest, adi_version)
+
+    @staticmethod
+    def _find_latest_adi_entry_in_line(manifest, line):
+        """Find the manifest-history entry of the latest release of a line."""
+        entries = [
+            entry for entry in manifest.get('history', [])
+            if ArtiCompute._is_in_adi_line(entry.get('adi_version'), line)]
+        if not entries:
+            return None
+        return natsorted(entries, key=lambda entry: entry['adi_version'])[-1]
+
+    @staticmethod
     def _find_adi_entry_by_version(manifest, adi_version):
         """Find manifest entry matching a specific ADI version"""
         for entry in manifest.get('history', []):
@@ -1623,6 +1732,24 @@ class ArtiCompute:
             logger.info(
                 f"Using explicit ADI artifact: {adi_artifact} "
                 f"(version {self._adi_version})")
+        elif self._requested_adi_version:
+            # Version or line pinned by the caller (RING ADI_BY_RING table)
+            if ADI_LINE_REGEX.match(self._requested_adi_version):
+                self._adi_version, adi_artifact_name = (
+                    self._find_latest_adi_line_build(
+                        self._requested_adi_version, auth=self.auth))
+            else:
+                self._adi_version = self._requested_adi_version
+                adi_artifact_name = self._find_latest_adi_artifact(
+                    self._adi_version, auth=self.auth)
+            adi_url = os.path.join(DEFAULT_ARTIFACT_URL, adi_artifact_name)
+            self._adi_iso = self._find_adi_iso(adi_url, self.auth)
+            adi_entry = self._fetch_adi_entry_for_build(
+                adi_artifact_name, self._adi_version, github_token)
+            logger.info(
+                f"Resolved ADI ISO from --adi-version "
+                f"{self._requested_adi_version}: ADI {self._adi_version} "
+                f"using artifact {adi_artifact_name}")
         else:
             # No explicit artifact, resolve from manifest.yaml
             adi_entry = self._fetch_adi_current_entry(
@@ -1674,7 +1801,17 @@ class ArtiCompute:
                 github_token=github_token, adi_ref=self._adi_branch)
             self._adi_manifest = manifest
 
-        if adi_upgrade_from:
+        if adi_upgrade_from and ADI_LINE_REGEX.match(adi_upgrade_from):
+            prev_entry = self._find_latest_adi_entry_in_line(
+                manifest, adi_upgrade_from)
+            if not prev_entry:
+                raise ArtifactError(
+                    f"No released ADI version of line {adi_upgrade_from} "
+                    f"in manifest history (--adi-upgrade-from)")
+            logger.info(
+                f"Using --adi-upgrade-from line {adi_upgrade_from}: "
+                f"ADI {prev_entry['adi_version']}")
+        elif adi_upgrade_from:
             # Explicit ADI version override
             prev_entry = self._find_adi_entry_by_version(
                 manifest, adi_upgrade_from)
@@ -1841,6 +1978,14 @@ class ArtiCompute:
                 print("unset UPGRADEPREV_FROM_SNAPSHOT", file=outfile)
 
 
+def _adi_version_arg(string):
+    """argparse type: an ADI line (MAJOR.MINOR) or version (MAJOR.MINOR.PATCH)"""
+    if not (ADI_LINE_REGEX.match(string) or ADI_VERSION_REGEX.match(string)):
+        raise argparse.ArgumentTypeError(
+            f"'{string}' is not MAJOR.MINOR or MAJOR.MINOR.PATCH")
+    return string
+
+
 def get_options():
     """Parse and return command line arguments."""
 
@@ -1902,8 +2047,16 @@ def get_options():
                         help='Version to upgrade from')
     parser.add_argument('--adi-upgrade-from',
                         dest='adi_upgrade_from_version',
+                        type=_adi_version_arg,
                         help='ADI version to upgrade from (scalityos only, '
-                             'overrides manifest history lookup)')
+                             'overrides manifest history lookup). '
+                             'MAJOR.MINOR takes the latest released patch')
+    parser.add_argument('--adi-version',
+                        dest='adi_version',
+                        type=_adi_version_arg,
+                        help='ADI version to install (scalityos only). '
+                             'MAJOR.MINOR takes the latest successful build '
+                             'of that line; MAJOR.MINOR.PATCH is exact')
     parser.add_argument('--adi-branch',
                         dest='adi_branch',
                         help='ADI git branch/tag/SHA to use for manifest lookups')
@@ -2028,6 +2181,7 @@ if __name__ == "__main__":
             ring_explicit=args.ring_explicit,
             adi_upgrade_from_version=args.adi_upgrade_from_version,
             adi_branch=args.adi_branch,
+            adi_version=args.adi_version,
         )
         if args.output_file:
             with open(args.output_file, 'w', encoding='utf-8') as outfile:
