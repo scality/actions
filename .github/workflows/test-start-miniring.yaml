@@ -21,6 +21,8 @@ jobs:
           cat > miniring <<'STUB'
           #!/usr/bin/env bash
           printf '[%s]\n' "$@" > argv.txt
+          id -un > user.txt
+          ulimit -l > memlock.txt
           echo "All processes started"
           sleep 300
           STUB
@@ -52,6 +54,11 @@ jobs:
         run: |
           grep -qxF -- '[--sproxyd.port=10000]' argv.txt
           grep -qxF -- '[--biziod.extra-args=-V debug]' argv.txt
+
+      - name: Check miniring runs as the caller, with memlock lifted
+        run: |
+          test "$(cat user.txt)" = "$(id -un)"
+          test "$(cat memlock.txt)" = unlimited
 
       - name: Check the pid file points at a running process
         run: kill -0 "$(cat miniring.pid)"
