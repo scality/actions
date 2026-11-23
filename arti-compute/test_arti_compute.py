@@ -663,3 +663,206 @@ def test_scalityos_install_adi_ring_mismatch_guard(monkeypatch):
     assert obj.adi_iso == _ADI_ISO_URL
     assert obj.upgrade_adi_iso != ac.UNSUPPORTED
     assert "UPGRADE_ADI_ISO=__UNSUPPORTED__" not in _bash_vars(obj)
+
+
+# ---- ADI line (MAJOR.MINOR) resolution ------------------------------------
+
+@pytest.mark.parametrize("version,line,expected", [
+    ("1.2.0", "1.2", True),
+    ("1.2.13", "1.2", True),
+    ("1.12.0", "1.2", False),
+    ("1.2", "1.2", False),
+    ("1.3.0", "1.2", False),
+    (None, "1.2", False),
+])
+def test_is_in_adi_line(version, line, expected):
+    assert ArtiCompute._is_in_adi_line(version, line) is expected
+
+
+@pytest.mark.parametrize("value", ["1.2", "1.2.3", "10.20.30"])
+def test_adi_version_arg_accepts(value):
+    assert ac._adi_version_arg(value) == value
+
+
+@pytest.mark.parametrize("value", ["1", "1.2.3.4", "v1.2", ""])
+def test_adi_version_arg_rejects(value):
+    with pytest.raises(ac.argparse.ArgumentTypeError):
+        ac._adi_version_arg(value)
+
+
+# manifest-history.yaml, oldest first
+_HISTORY = {"history": [
+    {"adi_version": "1.0.0"}, {"adi_version": "1.0.9"},
+    {"adi_version": "1.0.10"}, {"adi_version": "1.1.0"},
+    {"adi_version": "1.4.0"},
+]}
+
+
+@pytest.mark.parametrize("line,expected", [
+    ("1.0", "1.0.10"),  # version order, not text order: 1.0.10 > 1.0.9
+    ("1.1", "1.1.0"),
+    ("1.2", None),
+])
+def test_find_latest_adi_entry_in_line(line, expected):
+    entry = ArtiCompute._find_latest_adi_entry_in_line(_HISTORY, line)
+    assert (entry["adi_version"] if entry else None) == expected
+
+
+def test_upgrade_adi_entry_from_line_without_release():
+    """The caller asked for this upgrade source: no release is an error,
+    not a skipped upgrade."""
+    with pytest.raises(ac.ArtifactError, match="line 1.2"):
+        ArtiCompute.__new__(ArtiCompute)._upgrade_adi_entry_from_line(
+            _HISTORY, "1.2")
+
+
+# ---- Fake artifacts.scality.net ---------------------------------------------
+#
+# One row per ADI staging build: (build number, commit, ISO version,
+# successful). Commits are not in build order, and build 99 has fewer
+# digits: a sort by name instead of by number gives a wrong order.
+_ADI_BUILDS = [
+    (99, "ffffffffff", "1.0.2", True),
+    (112, "aaaaaaaaaa", "1.0.3", True),
+    (118, "dddddddddd", "1.1.0", True),
+    (124, "bbbbbbbbbb", "1.2.0", True),
+    (125, "eeeeeeeeee", "1.2.1", False),  # failed after it made its ISO
+    (126, "cccccccccc", None, False),     # failed before it made its ISO
+]
+_PROMOTED_VERSIONS = ["1.0.1", "1.4.0"]
+
+
+def _staging(commit, number):
+    return f"github:scality:adi:staging-{commit}.Build-ADI-ISO.{number}"
+
+
+def _promoted(version):
+    return f"{ac.ADI_PROMOTED_BUILD}{version}"
+
+
+def _listing_url(build):
+    return f"{ac.DEFAULT_ARTIFACT_URL}/{build}/?format=txt"
+
+
+def _root_listing():
+    builds = ([_staging(c, n) for n, c, _, _ in _ADI_BUILDS]
+              + [_promoted(v) for v in _PROMOTED_VERSIONS]
+              + ["github:scality:ring:promoted-10.1.0.0"])
+    return {f"{ac.DEFAULT_ARTIFACT_URL}/?format=txt":
+            "\n".join(f"{build}/" for build in builds)}
+
+
+def _last_success_searches():
+    search_url = (f"{ac.DEFAULT_SEARCH_URL}"
+                  "/last_success/version/github/scality/adi/Build-ADI-ISO")
+    return {f"{search_url}/{version}": _staging(commit, number)
+            for number, commit, version, successful in _ADI_BUILDS
+            if successful}
+
+
+def _staging_build_listings():
+    return {_listing_url(_staging(commit, number)):
+            f"scality-adi-{version}.iso" if version else "sbom/"
+            for number, commit, version, _ in _ADI_BUILDS}
+
+
+def _promoted_build_listings():
+    return {_listing_url(_promoted(version)): f"scality-adi-{version}.iso"
+            for version in _PROMOTED_VERSIONS}
+
+
+_FAKE_ARTIFACTS = {
+    **_root_listing(),
+    **_last_success_searches(),
+    **_staging_build_listings(),
+    **_promoted_build_listings(),
+}
+
+
+class _Response:
+    def __init__(self, text="", status=200):
+        self.text = text
+        self.ok = status == 200
+        self.status_code = status
+        self.reason = "OK" if self.ok else "Not Found"
+
+
+@pytest.fixture
+def fake_artifacts(monkeypatch):
+    def get(url, auth=None, **_):
+        if url in _FAKE_ARTIFACTS:
+            return _Response(_FAKE_ARTIFACTS[url])
+        return _Response(status=404)
+    monkeypatch.setattr(ac.requests, "get", get)
+
+
+def test_list_adi_builds(fake_artifacts):
+    staging_builds, promoted_versions = ArtiCompute._list_adi_builds()
+    build_numbers = [int(build.rsplit(".", 1)[1]) for build in staging_builds]
+    assert build_numbers == [126, 125, 124, 118, 112, 99]
+    assert promoted_versions == _PROMOTED_VERSIONS
+
+
+@pytest.mark.parametrize("line,expected", [
+    # 1.2.1 (125) never succeeded: take 1.2.0
+    ("1.2", ("1.2.0", _staging("bbbbbbbbbb", 124))),
+    # Newest of the line (1.0.3, build 112), past the newer 1.1 and 1.2 builds
+    ("1.0", ("1.0.3", _staging("aaaaaaaaaa", 112))),
+    # No staging build: newest promoted version of the line
+    ("1.4", ("1.4.0", _promoted("1.4.0"))),
+])
+def test_find_latest_adi_line_build(fake_artifacts, line, expected):
+    assert ArtiCompute._find_latest_adi_line_build(line) == expected
+
+
+def test_find_latest_adi_line_build_unknown_line(fake_artifacts):
+    with pytest.raises(ac.ArtifactError, match="line 1.3"):
+        ArtiCompute._find_latest_adi_line_build("1.3")
+
+
+# ---- --adi-version: which manifest describes the selected build -------------
+
+@pytest.fixture
+def manifest_reads(monkeypatch):
+    """Fake GitHub: record the commit of each manifest.yaml read."""
+    commits = []
+
+    def fetch(cls, adi_ref=None, adi_version=None, **_):
+        commits.append(adi_ref)
+        return {"adi_version": adi_version}
+    monkeypatch.setattr(
+        ArtiCompute, "_fetch_adi_current_entry", classmethod(fetch))
+    return commits
+
+
+def _with_adi_version(requested):
+    """ArtiCompute with only what _resolve_requested_adi reads."""
+    obj = ArtiCompute.__new__(ArtiCompute)
+    obj.auth = None
+    obj._requested_adi_version = requested
+    obj._adi_manifest = _HISTORY
+    return obj
+
+
+def test_adi_version_line_reads_manifest_at_build_commit(
+        fake_artifacts, manifest_reads):
+    obj = _with_adi_version("1.2")
+    obj._resolve_requested_adi(github_token=None)
+    assert obj._adi_version == "1.2.0"
+    assert manifest_reads == ["bbbbbbbbbb"]  # commit of build 124
+
+
+def test_adi_version_exact_reads_manifest_at_build_commit(
+        fake_artifacts, manifest_reads):
+    obj = _with_adi_version("1.1.0")
+    obj._resolve_requested_adi(github_token=None)
+    assert obj._adi_version == "1.1.0"
+    assert manifest_reads == ["dddddddddd"]  # commit of build 118
+
+
+def test_adi_version_promoted_reads_manifest_history(
+        fake_artifacts, manifest_reads):
+    obj = _with_adi_version("1.4")
+    obj._resolve_requested_adi(github_token=None)
+    assert obj._adi_version == "1.4.0"
+    assert manifest_reads == []  # a release: its manifest-history entry

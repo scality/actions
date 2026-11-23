@@ -51,7 +51,8 @@ Then `source` the output file as today:
 | `s3-artifact` | no | S3 / Federation artifact override |
 | `adi-artifact` | no | ADI artifact (scalityos) |
 | `adi-branch` | no | ADI git ref for manifests |
-| `adi-upgrade-from` | no | ADI upgrade-from version |
+| `adi-version` | no | ADI to install (scalityos): `MAJOR.MINOR` = latest successful build of the line, `MAJOR.MINOR.PATCH` = exact |
+| `adi-upgrade-from` | no | ADI upgrade-from version; `MAJOR.MINOR` = latest released patch in `manifest-history.yaml` |
 | `upgrade-from` | no | RING upgrade-from version |
 | `ring-architecture` | no | Architecture string (must match script `ARCHITECTURE`) |
 | `ring-explicit` | no | `true` if RING artifact was explicit |

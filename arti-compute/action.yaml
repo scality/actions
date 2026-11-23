@@ -40,8 +40,12 @@ inputs:
     description: 'ADI git ref for manifest lookups'
     required: false
     default: ''
+  adi-version:
+    description: 'ADI version to install (scalityos). MAJOR.MINOR takes the latest successful build of that line; MAJOR.MINOR.PATCH is exact'
+    required: false
+    default: ''
   adi-upgrade-from:
-    description: 'ADI version to upgrade from (overrides manifest history)'
+    description: 'ADI version to upgrade from (overrides manifest history). MAJOR.MINOR takes the latest released patch'
     required: false
     default: ''
   upgrade-from:
@@ -160,6 +164,9 @@ runs:
         fi
         if [ -n "${{ inputs.adi-branch }}" ]; then
           ARGS+=(--adi-branch "${{ inputs.adi-branch }}")
+        fi
+        if [ -n "${{ inputs.adi-version }}" ]; then
+          ARGS+=(--adi-version "${{ inputs.adi-version }}")
         fi
         if [ -n "${{ inputs.adi-upgrade-from }}" ]; then
           ARGS+=(--adi-upgrade-from "${{ inputs.adi-upgrade-from }}")
