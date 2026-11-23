@@ -352,6 +352,7 @@ class ArtiCompute:
         # set when they really come from the ADI ISO (explicit ADI artifact),
         # otherwise the RING build installers define them.
         self._adi_ring_version = None
+        self._adi_manifest_ring_version = None
         self._adi_s3_version = None
         self._ring_from_adi = False
         self._s3_from_adi = False
@@ -632,6 +633,11 @@ class ArtiCompute:
     def adi_version(self):
         """Get ADI version (scalityos only)"""
         return self._adi_version or ""
+
+    @property
+    def adi_ring_version(self):
+        """Get RING version from ADI manifest (scalityos only)"""
+        return self._adi_manifest_ring_version or ""
 
     @property
     def scos_version(self):
@@ -1863,6 +1869,8 @@ class ArtiCompute:
         if adi_entry:
             ring_info = adi_entry.get('components', {}).get('ring', {})
             manifest_ring_version = ring_info.get('version', '')
+            if manifest_ring_version:
+                self._adi_manifest_ring_version = manifest_ring_version
             if manifest_ring_version and self._ring_from_adi:
                 self._adi_ring_version = self._get_ring_version(
                     manifest_ring_version)
@@ -1877,6 +1885,32 @@ class ArtiCompute:
         prev_entry = None
         if 'upgrade' not in self.jobs and 'upgradeprev' not in self.jobs:
             return
+
+        if (not self._ring_from_adi
+                and self._ring_installer
+                and self._ring_installer != UNSUPPORTED
+                and self._adi_manifest_ring_version):
+            try:
+                adi_base = self._get_ring_version(re.sub(
+                    r'_(pw|rc)\d+$', '', self._adi_manifest_ring_version))
+                ring_base = self._get_ring_version(self._ring_installer)
+            except VersionError as err:
+                logger.warning(f"Cannot compare ADI and RING versions: {err}")
+            else:
+                adi_parts = (adi_base.split('.') + ['0'])[:4]
+                ring_parts = (ring_base.split('.') + ['0'])[:4]
+                if adi_parts != ring_parts:
+                    adi_ring = '.'.join(adi_parts)
+                    ring_ver = '.'.join(ring_parts)
+                    logger.warning(
+                        f"ADI {self._adi_version} bundles RING {adi_ring}; "
+                        f"scalicli cannot upgrade to RING {ring_ver} with "
+                        f"this ISO — scalityos upgrade skipped")
+                    self._upgrade_adi_iso = UNSUPPORTED
+                    self.upgrade_error_msg = (
+                        f"(ADI {self._adi_version} bundles RING {adi_ring}, "
+                        f"cannot upgrade to RING {ring_ver})")
+                    return
 
         # Fetch ADI manifest history for upgrades (to find previous versions).
         manifest = self._adi_manifest
@@ -1984,6 +2018,7 @@ class ArtiCompute:
                 print("# ==== ADI (scalityos)", file=outfile)
                 print(f"ADI_ISO={self.adi_iso}", file=outfile)
                 print(f"ADI_VERSION={self.adi_version}", file=outfile)
+                print(f"ADI_RING_VERSION={self.adi_ring_version}", file=outfile)
                 print(f"SCOS_VERSION={self.scos_version}", file=outfile)
 
             print(file=outfile)

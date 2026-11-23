@@ -68,6 +68,17 @@ Then `source` the output file as today:
 
 \* Required unless `check-tech-train` is set.
 
+## ADI variables (scalityos)
+
+The output file (or stdout) includes these ADI variables for `scalityos`:
+
+- `ADI_ISO`: ADI installer ISO.
+- `ADI_VERSION`: ADI version.
+- `ADI_RING_VERSION`: RING version recorded in the ADI manifest entry (empty when unknown).
+- `UPGRADE_ADI_ISO` / `UPGRADEPREV_ADI_ISO`: ADI ISO for the upgrade paths.
+  `UPGRADE_ADI_ISO` can be `__UNSUPPORTED__` when the RING base version bundled
+  in the ISO differs from the RING build's version.
+
 ## Environment
 
 | Variable | Role |
